@@ -9,6 +9,8 @@ extern UClass* GetEngineClass();
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
 	FEngineLoop EngineLoop;
 	if (!EngineLoop.PreInit(hInstance, GetEngineClass())) return -1;
 
