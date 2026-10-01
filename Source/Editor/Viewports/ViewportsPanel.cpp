@@ -138,8 +138,7 @@ void FViewportsPanel::OnRender()
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0f, 0.0f});
 	ImGui::Begin("Viewports", nullptr,
 		ImGuiWindowFlags_NoScrollbar |
-		ImGuiWindowFlags_NoScrollWithMouse |
-		ImGuiWindowFlags_NoTitleBar);
+		ImGuiWindowFlags_NoScrollWithMouse);
 
 	ContentOrigin = ImGui::GetCursorScreenPos();
 	ContentSize = ImGui::GetContentRegionAvail();
