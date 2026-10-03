@@ -34,13 +34,29 @@ DECLARE_CYCLE_STAT("Gather - LOD", STAT_GatherLOD);
 DECLARE_CYCLE_STAT("Gather - Submit", STAT_GatherSubmit);
 
 
-
 UWorld::~UWorld()
 {
+	ClearWorld();
 
+	// World에서 관리하는 AMainCameraActor 정리
+	if (MainCamera)
+	{
+		MainCamera->RegisterAllActorTickFunctions(false);
+		delete MainCamera;
+		MainCamera = nullptr;
+	}
+
+	for (ULevel* Level : Levels)
+	{
+		delete Level;
+	}
+	Levels.Reset();
+
+	PersistentLevel = nullptr;
+	CurrentLevel = nullptr;
 }
 
-bool  UWorld::Init()
+bool UWorld::Init()
 {
 	// Spawn Actor로 카메라 생성하고 세팅하기
 	PersistentLevel = FObjectFactory::ConstructObject<ULevel>();
@@ -150,7 +166,9 @@ void UWorld::ClearWorld()
 				Actor->RegisterAllActorTickFunctions(false);
 		Level->ClearActors();
 	}
-	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
+
+	if(PersistentLevel)
+		HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 }
 
 void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContext* LODView, const FFrustumPlanes* Frustum, FRenderer* Renderer)
