@@ -8,10 +8,18 @@ UEngine* GEngine = nullptr;
 //
 //}
 
-FWorldContext* UEngine::CreateNewWorldContext(EWorldType InType, FName ContextHandle)
+FWorldContext* UEngine::CreateNewWorldContext(EWorldType InType, FName ContextHandle, UWorld* InWorld)
 {
-	UWorld* World = FObjectFactory::ConstructObject<UWorld>();
-	if (!World || !World->Init(InType)) return nullptr;
+	UWorld* World;
+	if (nullptr == InWorld)
+	{
+		World = FObjectFactory::ConstructObject<UWorld>();
+		if (!World || !World->Init(InType)) return nullptr;
+	}
+	else
+	{
+		World = InWorld;
+	}
 
 	TUniquePtr NewContext = MakeUnique<FWorldContext>(InType, ContextHandle, World);
 	uint32 idx = WorldList.Add(std::move(NewContext));
@@ -30,4 +38,17 @@ FWorldContext* UEngine::GetWorldContext(EWorldType QueryType)
 	}
 
 	return nullptr;
+}
+
+bool UEngine::DeleteWorldContext(FWorldContext* TargetContext)
+{
+	for (size_t i = 0; i < WorldList.Num(); ++i)
+	{
+		if (TargetContext == WorldList[i].get())
+		{
+			WorldList.RemoveAt(i, 1);
+			return true;
+		}
+	}
+	return false;
 }

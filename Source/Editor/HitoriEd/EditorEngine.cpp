@@ -32,6 +32,9 @@
 #include "Core/EngineLog.h"
 #include "Core/Stats/LightweightStats.h"
 
+// 임시
+UWorld* DuplicateWorld(const UWorld* SourceWorld) { return nullptr; };
+
 namespace
 {
 	DECLARE_CYCLE_STAT("Viewport Update", STAT_ViewportUpdate);
@@ -567,6 +570,48 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 	OutlinerPanel->SelectActor(nullptr);
 
 	Actor->Destroy();
+}
+
+void UEditorEngine::StartPIE()
+{
+	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
+	if (!EditorWorld)
+	{
+		return;
+	}
+
+	UWorld* PIEWorld = DuplicateWorld(EditorWorld);
+	
+	FWorldContext* PIEContext = CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld);
+
+	MultipleViewportsAdapter.SetCurrentWorld(PIEWorld);
+}
+
+void UEditorEngine::EndPIE()
+{
+	FWorldContext* PIEContext = GetWorldContext(EWorldType::PIE);
+	if (!PIEContext)
+	{
+		return;
+	}
+
+	UWorld* PIEWorld = PIEContext->CurrentWorld;
+	if (!PIEWorld)
+	{
+		return;
+	}
+
+	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
+	if (!EditorWorld)
+	{
+		return;
+	}
+	MultipleViewportsAdapter.SetCurrentWorld(EditorWorld);
+
+	PIEWorld->ClearWorld();
+
+	// 소멸
+	DeleteWorldContext(PIEContext);
 }
 
 // 씬 변경으로 무효화된 에디터의 선택 참조를 모두 해제한다.

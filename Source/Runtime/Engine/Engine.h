@@ -64,9 +64,13 @@ public:
 	virtual void PreExit() {};
 
 	//UWorld* GetWorld() const { return World; }
-	FWorldContext* CreateNewWorldContext(EWorldType InType, FName ContextHandle);
+	FWorldContext* CreateNewWorldContext(EWorldType InType, FName ContextHandle, UWorld* InWorld = nullptr);
 
+	// WorldContext Getter
 	FWorldContext* GetWorldContext(EWorldType QueryType);
+	
+	// WorldContext 삭제 함수
+	bool DeleteWorldContext(FWorldContext* TargetContext);
 
 protected:
 	FEngineLoop& GetEngineLoop() const { return *EngineLoop; }

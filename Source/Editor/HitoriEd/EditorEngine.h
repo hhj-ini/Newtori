@@ -49,6 +49,10 @@ public:
 	void PresentFrame();
 	void DeleteActor(AActor* Actor);
 
+	// PIE
+	void StartPIE();
+	void EndPIE();
+
 private:
 	// 이번 프레임 DeltaTime을 패널에 전달하고 에디터 단축키를 처리한다.
 	void BeginFrame(float DeltaTime);
