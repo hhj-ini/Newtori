@@ -87,8 +87,7 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 	for (UActorComponent* Component : NewActor->GetComponents())
 	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
-			Scene.AddPrimitive(Primitive);
+		Component->RegisterComponent();
 	}
 
 	// 4. Level->Actors에 등록

@@ -91,6 +91,7 @@ public:
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
 
 	const FRenderStats& GetRenderStats() const { return RenderStats; }
+
 private:
 	struct alignas(64) FGatherChunk
 	{

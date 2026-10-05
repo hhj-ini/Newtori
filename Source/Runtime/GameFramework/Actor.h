@@ -36,6 +36,7 @@ public:
 	USceneComponent* GetRootComponent() const { return RootComponent; }
 	void SetRootComponent(USceneComponent* SceneComponent) { RootComponent = SceneComponent; }
 
+	UActorComponent* AddComponentByClass(UClass* Class);
 	void AddOwnedComponent(UActorComponent* Component);
 	void RemoveOwnedComponent(UActorComponent* Component);
 	
