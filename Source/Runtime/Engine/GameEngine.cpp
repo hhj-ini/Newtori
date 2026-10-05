@@ -18,14 +18,22 @@ FEngineConfig UGameEngine::GetConfig() const
 
 bool UGameEngine::Init()
 {
-	if (!Super::Init()) return false;
+	FWorldContext* InitContext = CreateNewWorldContext(EWorldType::Game, "Game");
+	if (!InitContext) return false;
 
 	return true;
 }
 
 void UGameEngine::Tick(float DeltaTime)
 {
-	//World->Tick(DeltaTime);
-
+	for (size_t i = 0; i < WorldList.size(); ++i)
+	{
+		UWorld* World = WorldList[i].get()->CurrentWorld;
+		if (!World)
+		{
+			continue;
+		}
+		World->Tick(DeltaTime);
+	}
 }
 

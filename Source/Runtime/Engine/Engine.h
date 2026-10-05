@@ -7,7 +7,26 @@
 
 enum class EWorldType
 {
+	Editor,
+	EditorPreview,
+	PIE,
+	Game,
+};
 
+struct FWorldContext
+{
+	// 월드의 종류
+	EWorldType WorldType;
+
+	// 식별
+	FName ContextHandle;
+
+	// 현재 활성화된 월드 포인터
+	UWorld* CurrentWorld;
+
+	FWorldContext(EWorldType Type, FName Handle, UWorld* WorldPtr)
+		: WorldType{ Type }, ContextHandle{ Handle }, CurrentWorld{ WorldPtr } 
+	{ };
 };
 
 class FEngineLoop;
@@ -37,19 +56,23 @@ public:
 	virtual FEngineConfig GetConfig() const { return {}; }
 
 	// Device·Window·Swapchain·AssetManager가 준비된 뒤 호출된다.
-	virtual bool Init();
+	virtual bool Init() = 0;
 	// 한 프레임의 갱신과 모든 렌더 패스를 기록한다. Present는 FEngineLoop가 호출 직후에 한다.
 	virtual void Tick(float DeltaTime) = 0;
 	virtual void OnResize(uint32 Width, uint32 Height) {}
 	// UObject 일괄 정리와 GPU 자원 해제 전에 호출된다.
 	virtual void PreExit() {};
 
-	UWorld* GetWorld() const { return World; }
+	//UWorld* GetWorld() const { return World; }
+	FWorldContext* CreateNewWorldContext(EWorldType InType, FName ContextHandle);
+
+	FWorldContext* GetWorldContext(EWorldType QueryType);
 
 protected:
 	FEngineLoop& GetEngineLoop() const { return *EngineLoop; }
 
-	UWorld* World = nullptr;
+	TArray<TUniquePtr<FWorldContext>> WorldList;
+
 private:
 	FEngineLoop* EngineLoop = nullptr;
 };

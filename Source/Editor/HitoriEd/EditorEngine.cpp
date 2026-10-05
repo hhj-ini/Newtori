@@ -64,8 +64,9 @@ FEngineConfig UEditorEngine::GetConfig() const
 // Device·Window·Swapchain·AssetManager는 FEngineLoop가 먼저 만들어 둔다.
 bool UEditorEngine::Init()
 {
-	if (!Super::Init())
-		return false;
+	FWorldContext* InitContext = CreateNewWorldContext(EWorldType::Editor, "Editor");
+
+	if (!InitContext) return false;
 
 	MainWindow = GetEngineLoop().GetMainWindow();
 	MainWindowSC = GetEngineLoop().GetSwapchain();
@@ -119,6 +120,7 @@ bool UEditorEngine::Init()
 	TextRenderer = MakeUnique<FTextRenderer>();
 	TextRenderer->Init();
 
+	UWorld* World = InitContext->CurrentWorld;
 	// 투영 행렬 생성 
 	MultipleViewportsAdapter.InitializeFromWorld(*World);
 	// 화면 나눔 비율 설정 가져오기
@@ -251,20 +253,35 @@ void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 // 월드를 한 번 Tick·Capture한 뒤 에디터와 피킹을 갱신한다.
 void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 {
-	// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
+	for (size_t i = 0; i < WorldList.Num(); ++i)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_WorldTick);
-		World->Tick(DeltaTime);
+		UWorld* World = WorldList[i].get()->CurrentWorld;
+		if (!World)
+		{
+			continue;
+		}
+		// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
+		{
+			SCOPE_CYCLE_COUNTER(STAT_WorldTick);
+			World->Tick(DeltaTime);
+		}
+
+		if (EWorldType::Editor == WorldList[i].get()->WorldType)
+		{
+			UpdateGizmoAndPicking(World);
+		}
 	}
+
+	// 1번만 실행되어야 하는 부분은 for 문 외부로 수정
 	{
 		SCOPE_CYCLE_COUNTER(STAT_EditorTick);
 		EditorUI->Tick(DeltaTime);
 	}
+
 	{
 		SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-		MultipleViewportsAdapter.CaptureWorld(*World);
+		MultipleViewportsAdapter.CaptureWorld();
 	}
-	UpdateGizmoAndPicking();
 }
 
 // 공유 월드 캡처로 활성 View별 렌더 큐를 만들고 렌더한다.
@@ -311,7 +328,7 @@ void UEditorEngine::EndFrame()
 }
 
 // 입력 View의 Ray와 피킹으로 Gizmo·공유 선택을 갱신한다.
-void UEditorEngine::UpdateGizmoAndPicking()
+void UEditorEngine::UpdateGizmoAndPicking(UWorld* World)
 {
 	// Delete는 BeginFrame에서 한 번만 처리하고 여기서는 View 입력만 다룬다.
 	const int32 ViewIndex = MultipleViewportsAdapter.GetActiveViewIndex();
@@ -352,6 +369,9 @@ void UEditorEngine::UpdateGizmoAndPicking()
 void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
 {
 	RenderCommand::BeginRenderPass(ViewRenderingInfo);
+
+	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
+
 	if (SettingsPanel->GetSettings().bDrawBatchLine)
 	{
 		// 라인 배처는 매 프레임 한 번만 비우고 한 번만 그린다.
@@ -561,6 +581,9 @@ void UEditorEngine::ResetSceneSelection()
 // 새 씬 생성이 성공하면 에디터 선택 상태를 초기화한다.
 void UEditorEngine::CreateNewScene()
 {
+	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
+	if (!World) return;
+
 	if (!FEditorFileUtils::NewScene(World))
 		return;
 
@@ -570,6 +593,9 @@ void UEditorEngine::CreateNewScene()
 // 씬 불러오기가 성공하면 에디터 선택 상태를 초기화한다.
 void UEditorEngine::OpenScene()
 {
+	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
+	if (!World) return;
+
 	if (!FEditorFileUtils::LoadScene(World))
 		return;
 
@@ -579,11 +605,17 @@ void UEditorEngine::OpenScene()
 // 공통 파일 유틸리티로 현재 씬을 저장한다.
 void UEditorEngine::SaveCurrentScene()
 {
+	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
+	if (!World) return;
+
 	FEditorFileUtils::SaveScene(World);
 }
 
 // 공통 파일 유틸리티로 새 경로에 씬을 저장한다.
 void UEditorEngine::SaveSceneAs()
 {
+	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
+	if (!World) return;
+
 	FEditorFileUtils::SaveSceneAs(World);
 }
