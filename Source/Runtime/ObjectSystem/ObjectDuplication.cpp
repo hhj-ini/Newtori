@@ -1,5 +1,18 @@
 #include "EnginePCH.h"
 #include "ObjectDuplication.h"
+
+#include "GameFramework/Actor.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "Engine/Level.h"
+#include "Component/ActorComponent.h"
+#include "Component/SceneComponent.h"
+#include "ObjectSystem/ObjectFactory.h"
+#include "ObjectSystem/Class.h"
+#include "Property.h"
+#include "Asset/RenderAsset.h"
+#include "Math/Transform.h"
+
 namespace
 {
     void CopyProperties(UObject* Src, UObject* Dst, UClass* FromClass)
@@ -218,7 +231,7 @@ UWorld* FObjectDuplicator::DuplicateWorld(const UWorld* SourceWorld)
 
     // 새 World를 초기화한 뒤 SourceWorld의 Level Actor들을 새 World에 각각 복제한다.
     UWorld* DestWorld = FObjectFactory::ConstructObject<UWorld>();
-    if (!DestWorld || !DestWorld->Init())
+    if (!DestWorld || !DestWorld->Init(EWorldType::PIE))
     {
         delete DestWorld;
         return nullptr;
