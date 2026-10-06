@@ -32,8 +32,7 @@
 #include "Core/EngineLog.h"
 #include "Core/Stats/LightweightStats.h"
 
-// 임시
-UWorld* DuplicateWorld(const UWorld* SourceWorld) { return nullptr; };
+#include "ObjectSystem/ObjectDuplication.h"
 
 namespace
 {
@@ -580,7 +579,7 @@ void UEditorEngine::StartPIE()
 		return;
 	}
 
-	UWorld* PIEWorld = DuplicateWorld(EditorWorld);
+	UWorld* PIEWorld = FObjectDuplicator::DuplicateWorld(EditorWorld, EWorldType::PIE);
 	
 	FWorldContext* PIEContext = CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld);
 
