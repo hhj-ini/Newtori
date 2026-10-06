@@ -24,7 +24,6 @@
 #include "Core/Stats/EditorStats.h"
 #include "Core/Async/TaskPool.h"
 
-
 DECLARE_CYCLE_STAT("Actor Tick", STAT_ActorTick); // Actor 틱 측정
 DECLARE_CYCLE_STAT("Update All Transforms", STAT_UpdateAllTransforms); // 각 Transform의 Update 시간 측정
 DECLARE_CYCLE_STAT("Gather Render Packets", STAT_GatherRenderPackets);
@@ -34,13 +33,11 @@ DECLARE_CYCLE_STAT("Gather - LOD", STAT_GatherLOD);
 DECLARE_CYCLE_STAT("Gather - Submit", STAT_GatherSubmit);
 
 
-
 UWorld::~UWorld()
 {
-
 }
 
-bool  UWorld::Init(EWorldType InType)
+bool UWorld::Init(EWorldType InType)
 {
 	// Spawn Actor로 카메라 생성하고 세팅하기
 	PersistentLevel = FObjectFactory::ConstructObject<ULevel>();
@@ -153,13 +150,13 @@ void UWorld::ClearWorld()
 				Actor->RegisterAllActorTickFunctions(false);
 		Level->ClearActors();
 	}
-	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
+
+	if(PersistentLevel)
+		HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 }
 
 void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContext* LODView, const FFrustumPlanes* Frustum, FRenderer* Renderer)
 {
-
-
 	// 멤버로 두어 매 프레임 용량을 재사용한다.
 	RenderStats.Reset();
 	VisibleProxies.Reset();

@@ -45,6 +45,7 @@ public:
 	virtual ~UWorld();
 
 	bool Init(EWorldType InType);
+
 	/*UPrimitiveComponent* SpawnPrimitive(FClass* Class);*/
 	AActor* SpawnActor(UClass* Class, FName InName = NAME_None, const FTransform* Transform = nullptr);
 
@@ -60,9 +61,8 @@ public:
 
 	void GatherRenderPackets(FRenderQueue& RenderArray, const FLODViewContext* LODView = nullptr, const FFrustumPlanes* Frustum = nullptr, FRenderer* Renderer = nullptr);
 
+	// 카메라
 	void CreateMainCamera();
-
-	// 카메라 Get/Set
 	void SetMainCamera(ACameraActor* Camera);
 	ACameraActor* GetMainCamera() const { return MainCamera; }
 
@@ -81,6 +81,7 @@ public:
 
 	// View별 Billboard 행렬 공급자는 이 동기 호출 동안만 사용하며 저장하지 않는다.
 	using FBillboardTraceTransform = FMatrix(*)(const UBillboardComponent&, const void*);
+
 	// 현재 World의 Component에 Ray를 전달하고 가장 가까운 유효 교차를 반환한다.
 	bool LineTraceSingle(const FRay& WorldRay, FHitResult& OutHit,
 		FBillboardTraceTransform ResolveBillboard = nullptr, const void* ViewContext = nullptr);

@@ -59,6 +59,20 @@ void AActor::RegisterAllActorTickFunctions(bool bRegister)
 	}
 }
 
+void AActor::AddOwnedComponent(UActorComponent* Component)
+{
+    if (!Component) return;
+    for (UActorComponent* CurrentComponent : Components)
+    {
+        if (Component == CurrentComponent)
+        {
+            return;
+        }
+    }
+    Component->SetOwner(this);
+    Components.Add(Component);
+}
+
 void AActor::RemoveOwnedComponent(UActorComponent* Component)
 {
     for (uint32 i = 0; i < Components.Num(); ++i)
