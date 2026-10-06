@@ -30,7 +30,7 @@ private:
 	USceneComponent* Target = nullptr;
 
 	UActorComponent* SelectedComponent = nullptr;
-
-	void DrawSceneComponentTree(USceneComponent* Component);
+	void DrawComponentTree(AActor* Owner);
+	void DrawSceneComponentNode(USceneComponent* Component);
 };
 
