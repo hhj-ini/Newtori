@@ -28,8 +28,10 @@ constexpr EPropertyType GetPropertyType()
     template <> constexpr EPropertyType GetPropertyType<CppType>()  \
     { return EPropertyType::EnumValue; }
 
+// TODO: Int가 int32/uint32를 구분하지 못함
 DEFINE_PROPERTY_TYPE(int, Int)
 DEFINE_PROPERTY_TYPE(uint32, Int)
+
 DEFINE_PROPERTY_TYPE(float, Float)
 DEFINE_PROPERTY_TYPE(bool, Bool)
 DEFINE_PROPERTY_TYPE(FString, String)

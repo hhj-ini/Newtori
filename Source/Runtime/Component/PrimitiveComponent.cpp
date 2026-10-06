@@ -7,6 +7,7 @@
 
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Engine/Scene.h"
+#include "Engine/World.h"
 
 namespace
 {
@@ -110,9 +111,32 @@ bool UPrimitiveComponent::TraceMesh(const FRay& WorldRay, const FStaticMeshData&
 	return true;
 }
 
-
-
 bool UPrimitiveComponent::TraceMeshLocal(const FRay& LocalRay, const FStaticMeshData& Mesh, float& OutT)
 {
 	return RayIntersectsMesh(LocalRay, Mesh, OutT);
+}
+
+void UPrimitiveComponent::OnRegister()
+{
+	Super::OnRegister();
+
+	AActor* Owner = GetOwner();
+	if (!Owner) return;
+
+	UWorld* World = Owner->GetWorld();
+	if (!World) return;
+
+	FScene& Scene = World->GetScene();
+	Scene.AddPrimitive(this);
+}
+
+void UPrimitiveComponent::OnUnregister()
+{
+	AActor* Owner = GetOwner();
+	UWorld* World = Owner->GetWorld();
+
+	FScene& Scene = World->GetScene();
+
+	Scene.RemovePrimitive(this);
+	Super::OnUnregister();
 }

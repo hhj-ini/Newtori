@@ -78,6 +78,9 @@ protected:
 	bool TraceMeshLocal(const FRay& LocalRay, const FStaticMeshData& Mesh, float& OutT);
 	bool bVisible = true;
 
+	void OnRegister() override;
+	void OnUnregister() override;
+
 private:
 	friend class FScene;
 	FPrimitiveSceneProxy* SceneProxy = nullptr;

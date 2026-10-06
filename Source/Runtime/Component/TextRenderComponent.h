@@ -11,7 +11,7 @@ class UTextRenderComponent : public UPrimitiveComponent
 		PROPERTY(Text)
 		PROPERTY(TextSize)
 		PROPERTY(Font)
-		REFLECT_END()
+	REFLECT_END()
 
 public:
 	UTextRenderComponent();

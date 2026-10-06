@@ -59,6 +59,37 @@ void AActor::RegisterAllActorTickFunctions(bool bRegister)
 	}
 }
 
+UActorComponent* AActor::AddComponentByClass(UClass* Class)
+{
+    if (Class == nullptr) return nullptr;
+    if (!Class->IsChildOf(UActorComponent::StaticClass())) return nullptr;
+
+    // 새 Component를 만들고 이 Actor를 Outer, Owner로 설정한다.
+    UActorComponent* Component = CastChecked<UActorComponent>(FObjectFactory::ConstructObject(Class, this));
+    AddOwnedComponent(Component);
+
+    // 위치를 가지는 SceneComponent라면 Actor의 Transform 계층에 붙인다.
+    USceneComponent* SceneComponent = Cast<USceneComponent>(Component);
+    if (SceneComponent)
+    {
+        USceneComponent* Root = GetRootComponent();
+        if (Root)
+        {
+            SceneComponent->SetupAttachment(Root);
+        }
+        else
+        {
+            SetRootComponent(SceneComponent);
+        }
+    }
+
+    // Component를 World에서 사용할 수 있게 등록한다.
+    // PrimitiveComponent라면 이 과정에서 Render Scene에도 추가된다.
+    Component->RegisterComponent();
+
+    return Component;
+}
+
 void AActor::AddOwnedComponent(UActorComponent* Component)
 {
     if (!Component) return;
@@ -75,6 +106,8 @@ void AActor::AddOwnedComponent(UActorComponent* Component)
 
 void AActor::RemoveOwnedComponent(UActorComponent* Component)
 {
+    Component->UnregisterComponent();
+
     for (uint32 i = 0; i < Components.Num(); ++i)
     {
         if (Components[i] == Component)
