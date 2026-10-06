@@ -3,6 +3,13 @@
 #include "Editor/EditorUI/EditorPanel.h"
 #include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapterTypes.h"
 #include "Render/RenderingInfo.h"
+
+enum class EViewportDisplayMode : uint32
+{
+	SceneColor = 0,
+	SceneDepth = 1
+};
+
 class FMultipleViewportsAdapter;
 
 class FViewportsPanel : public IEditorPanel
@@ -35,6 +42,12 @@ public:
 	// UI에서 발생한 View별 Camera Preset 요청을 한 번 소비하도록 반환한다.
 	bool ConsumeCameraPresetRequest(int32& OutViewIndex, EMultipleViewportsCameraPreset& OutPreset);
 
+	// Todo: Post process
+	const FRenderingInfo& GetPostProcessRenderingInfo(int32 ViewIndex) const;
+	FTexture2D* GetSceneColor(int32 ViewIndex) const;
+
+	EViewportDisplayMode GetDisplayMode(int32 ViewIndex) const;
+
 private:
 	FMultipleViewportsAdapter* ViewportAdapter = nullptr;
 	struct FViewSlot
@@ -47,6 +60,11 @@ private:
 		TUniquePtr<FTexture2D> ColorTarget;
 		TUniquePtr<FTexture2D> DepthTarget;
 		FRenderingInfo RenderingInfo{};
+
+		// Todo: Post Process
+		TUniquePtr<FTexture2D> SceneColor;
+		FRenderingInfo PostProcessRenderingInfo{};
+		EViewportDisplayMode DisplayMode = EViewportDisplayMode::SceneColor;
 	};
 
 	// Rect 크기가 바뀐 Slot의 Color/Depth Texture와 렌더 정보를 다시 만든다.

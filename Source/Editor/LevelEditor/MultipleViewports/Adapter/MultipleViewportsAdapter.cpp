@@ -495,6 +495,12 @@ const FRect& FMultipleViewportsAdapter::GetViewRect(const int32 ViewIndex) const
     return ViewRects[ViewIndex];
 }
 
+// Todo: Post process
+FCameraProjection FMultipleViewportsAdapter::GetRenderProjection(int32 ViewIndex) const
+{
+    return GetRenderCamera(ViewIndex).Projection;
+}
+
 // 직교 화면의 XY는 유지하면서 렌더·컬링·피킹용 카메라만 후퇴시켜 양방향 깊이를 확보한다.
 FViewCamera FMultipleViewportsAdapter::GetRenderCamera(const int32 ViewIndex) const
 {

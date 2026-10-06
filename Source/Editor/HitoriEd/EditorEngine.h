@@ -31,6 +31,9 @@
 #include "Text/Font.h"
 #include "Text/TextRenderer.h"
 
+// Todo: Post process
+#include "Render/Buffer.h"
+
 class UEditorEngine : public UEngine
 {
 	DECLARE_CLASS(UEditorEngine, UEngine)
@@ -79,6 +82,20 @@ private:
 	TUniquePtr<FSkyboxRenderer> SkyboxRenderer;
 
 	UFont* SystemFont;
+
+	// Todo: Post process
+	struct FPostProcessConstants
+	{
+		uint32 DisplayMode = 0;
+		float NearClip = 0.1f;
+		float FarClip = 10000.f;
+		uint32 IsOrthographic = 0;
+	};
+
+	//static_assert(sizeof(FPostProcessConstants) == 16);
+	FShaderProgram* PostProcessShader = nullptr;
+	TUniquePtr<FConstantBuffer> PostProcessConstantBuffer;
+	//
 
 	FOutputLogPanel* OutputLogPanel = nullptr;
 
