@@ -743,7 +743,14 @@ void FDetailsPanel::OnRender()
 				{
 					if (AActor* Owner = Target->GetOwner())
 					{
-						Owner->AddComponentByClass(Class);
+						UActorComponent* NewComponent = Owner->AddComponentByClass(Class);
+
+						if (NewComponent)
+						{
+							SelectedComponent = NewComponent;
+							bExpandComponentTreeNextFrame = true;
+						}
+
 						ImGui::CloseCurrentPopup();
 					}
 				}
@@ -791,8 +798,13 @@ void FDetailsPanel::DrawComponentTree(AActor* Owner)
 	USceneComponent* Root = Owner->GetRootComponent();
 	if (Root)
 	{
+		if (bExpandComponentTreeNextFrame)
+			ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+
 		DrawSceneComponentNode(Root);
 	}
+
+	bExpandComponentTreeNextFrame = false;
 
 	for (UActorComponent* Component : Owner->GetComponents())
 	{

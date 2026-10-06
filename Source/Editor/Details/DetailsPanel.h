@@ -29,6 +29,8 @@ private:
 	UWorld* World = nullptr;
 	USceneComponent* Target = nullptr;
 
+	bool bExpandComponentTreeNextFrame = false;
+
 	UActorComponent* SelectedComponent = nullptr;
 	void DrawComponentTree(AActor* Owner);
 	void DrawSceneComponentNode(USceneComponent* Component);
