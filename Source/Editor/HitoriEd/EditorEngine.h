@@ -42,12 +42,16 @@ public:
 	void PreExit() override;
 
 	// Active View의 입력과 Picking 결과만 Gizmo 및 선택 상태에 반영한다.
-	void UpdateGizmoAndPicking();
+	void UpdateGizmoAndPicking(UWorld* World);
 	// View 하나의 Scene·Grid·Gizmo·텍스트를 해당 ViewProjection으로 렌더한다.
 	void RenderFrame(int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue);
 	// 네 View 결과와 ImGui를 메인 Swapchain 백버퍼에 합성한다. Present는 FEngineLoop가 한다.
 	void PresentFrame();
 	void DeleteActor(AActor* Actor);
+
+	// PIE
+	void StartPIE();
+	void EndPIE();
 
 private:
 	// 이번 프레임 DeltaTime을 패널에 전달하고 에디터 단축키를 처리한다.

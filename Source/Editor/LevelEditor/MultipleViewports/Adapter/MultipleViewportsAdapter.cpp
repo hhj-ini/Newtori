@@ -152,6 +152,8 @@ FQuat MakeCameraRotation(const float YawDegrees, const float PitchDegrees)
 // 메인 카메라 투영값을 공유하고 네 View의 기본 프리셋 상태를 만든다.
 void FMultipleViewportsAdapter::InitializeFromWorld(UWorld& World)
 {
+    CurrentWorld = &World;
+
     UCameraComponent* MainCamera = World.GetMainCamera() ? World.GetMainCamera()->GetCameraComponent() : nullptr;
     assert(MainCamera != nullptr);
 
@@ -441,21 +443,21 @@ void FMultipleViewportsAdapter::UpdateInput(
 }
 
 // 현재 World의 가시 컴포넌트에서 경계만 캡처한다. Mesh·삼각형은 복사하지 않는다.
-void FMultipleViewportsAdapter::CaptureWorld(UWorld& World)
+void FMultipleViewportsAdapter::CaptureWorld()
 {
     RenderObjects.Reset();
     for (auto& Entry : PrimitiveById) Entry.second.bCaptured = false;
     bCapturedBillboard = false;
     bCapturedParticle = false;
 
-    const FScene& Scene = World.GetScene();
+    const FScene& Scene = CurrentWorld->GetScene();
     const int32 Count = Scene.Proxies.Num();
     for (int32 i = 0; i < Count;++i)
     {
         if (!Scene.PrimitiveFlags[i]) continue;
         UPrimitiveComponent* Primitive = Scene.Proxies[i]->GetComponent();
         if (!Primitive || !Primitive->IsVisible() || !Primitive->GetOwner() ||
-            Primitive->GetOwner()->GetWorld() != &World) continue;
+            Primitive->GetOwner()->GetWorld() != CurrentWorld) continue;
         const ObjectId Id = Primitive->GetUUID();
         if (Id == InvalidObjectId) continue;
 

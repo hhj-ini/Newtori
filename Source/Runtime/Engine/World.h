@@ -20,6 +20,8 @@ class UBillboardComponent;
 
 struct FLODViewContext;
 
+enum class EWorldType;
+
 struct FRenderStats
 {
 	uint32 TotalPrimitives = 0;
@@ -42,7 +44,7 @@ public:
 	UWorld() = default;
 	virtual ~UWorld();
 
-	bool Init();
+	bool Init(EWorldType InType);
 
 	/*UPrimitiveComponent* SpawnPrimitive(FClass* Class);*/
 	AActor* SpawnActor(UClass* Class, FName InName = NAME_None, const FTransform* Transform = nullptr);
@@ -74,7 +76,7 @@ public:
 	FPathTracker& GetPathTracker() { return PathTracker; }
 
 	int32 GetActorNum();
-
+	
 	bool DestroyActor(AActor* Actor);
 
 	// View별 Billboard 행렬 공급자는 이 동기 호출 동안만 사용하며 저장하지 않는다.
@@ -127,4 +129,7 @@ private:
     TArray<uint8> SelectedLODs;
 
 	FRenderStats RenderStats;
+
+	// 월드타입 저장변수
+	EWorldType WorldType;
 };
