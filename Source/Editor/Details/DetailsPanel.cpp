@@ -533,6 +533,7 @@ namespace
 	{
 		void* ValuePtr = reinterpret_cast<char*>(Object) + Property.Offset;
 		const FString Label = "##" + Property.Name;
+		bool bIsChanged = false;
 
 		ImGui::Text(Property.Name.c_str());
 		ImGui::SameLine(120.0f);
@@ -541,7 +542,7 @@ namespace
 		switch (Property.Type)
 		{
 		case EPropertyType::Float:
-			ImGui::DragFloat(Label.c_str(), static_cast<float*>(ValuePtr), 0.1f);
+			bIsChanged =ImGui::DragFloat(Label.c_str(), static_cast<float*>(ValuePtr), 0.1f);
 			break;
 
 		case EPropertyType::Int:
@@ -555,7 +556,7 @@ namespace
 		case EPropertyType::Vector:
 		{
 			FVector* Value = static_cast<FVector*>(ValuePtr);
-			ImGui::DragFloat3(Label.c_str(), Value->V, 0.1f);
+			bIsChanged = ImGui::DragFloat3(Label.c_str(), Value->V, 0.1f);
 			break;
 		}
 		case EPropertyType::Rotator:
@@ -583,7 +584,7 @@ namespace
 		{
 			// 타입은 Vector4와 같고 위젯만 색상 선택기다
 			FVector4* Value = static_cast<FVector4*>(ValuePtr);
-			ImGui::ColorEdit4(Label.c_str(), &Value->X);
+			bIsChanged = ImGui::ColorEdit4(Label.c_str(), &Value->X);
 			break;
 		}
 		case EPropertyType::String:
@@ -605,9 +606,9 @@ namespace
 			FTransform* Value = static_cast<FTransform*>(ValuePtr);
 
 			ImGui::NewLine();
-			DrawVector3Controller("Location", Value->Location.V, 0.0f, 55.0f);
-			DrawRotatorAsXYZ("Rotation", Value->Rotation);
-			DrawVector3Controller("Scale", Value->Scale.V, 1.0f, 55.0f);
+			bIsChanged |= DrawVector3Controller("Location", Value->Location.V, 0.0f, 55.0f);
+			bIsChanged |= DrawRotatorAsXYZ("Rotation", Value->Rotation);
+			bIsChanged |= DrawVector3Controller("Scale", Value->Scale.V, 1.0f, 55.0f);
 			break;
 		}
 		case EPropertyType::Object:
@@ -632,6 +633,9 @@ namespace
 			ImGui::TextDisabled("(Unsupported)");
 			break;
 		}
+
+		if(bIsChanged)
+			Object->OnPropertyChanged(Property);
 	}
 
 	// 클래스 계층을 따라 올라가며 각 단계의 프로퍼티를 표시

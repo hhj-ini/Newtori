@@ -26,6 +26,7 @@
 #include "Editor/Outliner/OutlinerPanel.h"
 
 #include "Render/SkyboxRenderer.h"
+#include "Render/FogRenderer.h"
 
 //Temp
 #include "Text/Font.h"
@@ -80,6 +81,7 @@ private:
 	TUniquePtr<FOutline> Outline;
 	TUniquePtr<FOutlineRenderer> OutlineRenderer;
 	TUniquePtr<FSkyboxRenderer> SkyboxRenderer;
+	TUniquePtr<FFogRenderer> FogRenderer;
 
 	UFont* SystemFont;
 
