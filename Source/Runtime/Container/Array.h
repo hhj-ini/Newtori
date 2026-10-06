@@ -64,7 +64,12 @@ public:
 	};
 	int32 Find(const ElementType& Item) const
 	{
-		return std::find(mDatas.begin(), mDatas.end(), Item) - mDatas.begin();
+		const auto It =  std::find(mDatas.begin(), mDatas.end(), Item) ;
+
+		if (It == mDatas.end())
+			return -1;
+
+		return It - mDatas.begin();
 	}
 
 	int32 Num() const;
