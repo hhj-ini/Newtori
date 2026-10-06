@@ -580,6 +580,11 @@ void UEditorEngine::StartPIE()
 	}
 
 	UWorld* PIEWorld = FObjectDuplicator::DuplicateWorld(EditorWorld, EWorldType::PIE);
+	if (!PIEWorld)
+	{
+		HTR_LOG(Error, "Failed to duplicate world for PIE");
+		return;
+	}
 	
 	FWorldContext* PIEContext = CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld);
 
