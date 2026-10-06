@@ -12,6 +12,8 @@
 
 #include "UObject/UObjectIterator.h"
 
+#include "Component/ExponentialHeightFogComponent.h"
+
 #include "Collision/Ray.h"
 #include "Component/BillboardComponent.h"
 
@@ -92,6 +94,9 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	{
 		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
 			Scene.AddPrimitive(Primitive);
+
+		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
+			Scene.AddExponentialHeightFog(Fog);
 	}
 
 	// 4. Level->Actors에 등록
@@ -140,9 +145,13 @@ void UWorld::ClearWorld()
 	PathTracker.SetPathRenderingEnabled(false);
 	PathTracker.ClearPath();
 
+
+
 	// 액터를 지우기 전에 렌더 프록시와 틱 등록부터 푼다. ClearActors는 액터를 delete만 하므로,
 	// 그대로 두면 지워진 컴포넌트를 가리키는 프록시가 FScene에 남아 다음 프레임에 터진다.
 	Scene.RemoveAllPrimitives();
+	Scene.RemoveAllExponentialHeightFogs();
+
 	for (ULevel* Level : Levels)
 	{
 		for (AActor* Actor : Level->Actors)
@@ -553,6 +562,10 @@ bool UWorld::DestroyActor(AActor* Actor)
 		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
 		{
 			Scene.RemovePrimitive(Primitive);
+		}
+		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
+		{
+			Scene.RemoveExponentialHeightFog(Fog);
 		}
 	}
 
