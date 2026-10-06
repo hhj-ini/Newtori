@@ -113,6 +113,16 @@ namespace
 		return isChanged;
 	}
 
+	FString GetAssetDisplayName(const FString& Path)
+	{
+		fs::path AssetPath(Path);
+		if (AssetPath.stem() == "Atlas")
+		{
+			return AssetPath.parent_path().filename().string();
+		}
+		return AssetPath.stem().string();
+	}
+
 	void DrawTextureSlot(UMaterial** MaterialPtr, int32 SlotIndex)
 	{
 		const float ThumbnailSize = 64.0f;
@@ -190,17 +200,6 @@ namespace
 
 		ImGui::PopID();
 	}
-
-	FString GetAssetDisplayName(const FString& Path)
-	{
-		fs::path AssetPath(Path);
-		if (AssetPath.stem() == "Atlas")
-		{
-			return AssetPath.parent_path().filename().string();
-		}
-		return AssetPath.stem().string();
-	}
-
 	void DrawFontSlot(UObject* Owner, UFont** FontPtr)
 	{
 		UFont* Current = *FontPtr;
@@ -247,7 +246,6 @@ namespace
 			ImGui::EndCombo();
 		}
 	}
-
 	void DrawMeshSlot(UObject* Owner, UStaticMesh** StaticMeshPtr)
 	{
 		UStaticMesh* Current = *StaticMeshPtr;
@@ -670,6 +668,11 @@ namespace
 	}
 }
 
+FDetailsPanel::~FDetailsPanel()
+{
+	//delete transform;
+}
+
 bool FDetailsPanel::Init()
 {
 	ImGuiIO& io = ImGui::GetIO();
@@ -690,7 +693,6 @@ void FDetailsPanel::Tick(float DeltaTime)
 {
 }
 
-
 void FDetailsPanel::OnRender()
 {
 	ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
@@ -701,6 +703,39 @@ void FDetailsPanel::OnRender()
 	{
 		// 액터 -> 컴포넌트 순으로, 클래스별 프로퍼티 표시
 		DrawProperties(Target->GetOwner(), CustomFont);
+
+		ImGui::TextUnformatted("Components");
+		ImGui::SameLine();
+
+		const float ButtonWidth = 70.0f;
+		ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - ButtonWidth);
+		if (ImGui::Button("+ Add", ImVec2(ButtonWidth, 0)))
+		{
+			ImGui::OpenPopup("AddComponentPopup");
+		}
+
+		ImGui::Separator();
+
+		ImGui::SetNextWindowSizeConstraints(ImVec2(220.0f, 0.0f),ImVec2(320.0f, 400.0f));
+		if (ImGui::BeginPopup("AddComponentPopup"))
+		{
+			TArray<UClass*> ComponentClasses;
+			GetDerivedClasses(UActorComponent::StaticClass(), ComponentClasses);
+
+			for (UClass* Class : ComponentClasses)
+			{
+				if (Class->Constructor == nullptr) continue;
+				if (ImGui::Selectable(Class->Name.c_str()))
+				{
+					if (AActor* Owner = Target->GetOwner())
+					{
+						Owner->AddComponentByClass(Class);
+						ImGui::CloseCurrentPopup();
+					}
+				}
+			}
+			ImGui::EndPopup();
+		}
 
 		// 선택된 컴포넌트뿐 아니라 같은 액터의 다른 컴포넌트도 보여준다.
 		// (예: 라이트는 빌보드를 클릭해서 고르지만 수치는 SpotLight 쪽에 있다)
@@ -727,7 +762,7 @@ void FDetailsPanel::OnRender()
 	ImGui::End();
 }
 
-FDetailsPanel::~FDetailsPanel()
+void FDetailsPanel::DrawSceneComponentTree(USceneComponent* Component)
 {
-	//delete transform;
+
 }
