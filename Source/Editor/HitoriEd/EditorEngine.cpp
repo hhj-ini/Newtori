@@ -25,6 +25,7 @@
 #include "Render/RenderResourceManager.h"
 
 #include "Render/RenderCommand.h"
+#include "Render/FogRenderer.h"
 #include "Editor/Outliner/OutlinerPanel.h"
 #include "Editor/HitoriEd/EditorFileUtils.h"
 #include "UObject/UObjectIterator.h"
@@ -95,6 +96,9 @@ bool UEditorEngine::Init()
 	GridRenderer = MakeUnique<FGridRenderer>();
 	GridRenderer->Init(Renderer);
 
+	FogRenderer = MakeUnique<FFogRenderer>();
+	FogRenderer->Init(RenderDevice);
+
 	GizmoRenderer = MakeUnique<FGizmoRenderer>();
 	GizmoRenderer->Init(Renderer);
 
@@ -142,11 +146,11 @@ bool UEditorEngine::Init()
 	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(World);
 	OutlinerPanel->SetSelectionCallback(
-		[this](UPrimitiveComponent* Primitive)
+		[this](USceneComponent* Root)
 		{
-			Gizmo->SetTarget(Primitive);
-			Outline->SetTarget(Primitive);
-			DetailsPanel->SetTarget(Primitive);
+			Gizmo->SetTarget(Root);
+			Outline->SetTarget(Cast<UPrimitiveComponent>(Root));
+			DetailsPanel->SetTarget(Root);
 		}
 	);
 
@@ -394,6 +398,24 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
 		Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
 		Renderer->RenderOpaque(ViewProjection);
+		// Fog pass: preserve scene color and composite before editor overlays.
+		if (FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+		{
+			const auto& Fogs = World->GetScene().ExponentialFogs;
+			if (!Fogs.IsEmpty())
+			{
+				const auto& FogInfo = Fogs[0].Info;
+				FHeightFogConstants Constants{};
+				Constants.FogInscatteringColor = FogInfo.FogInscatteringColor;
+				Constants.FogHeight = FogInfo.FogHeight;
+				Constants.FogDensity = FogInfo.FogDensity;
+				Constants.FogHeightFalloff = FogInfo.FogHeightFalloff;
+				Constants.StartDistance = FogInfo.StartDistance;
+				Constants.FogCutoffDistance = FogInfo.FogCutoffDistance;
+				Constants.FogMaxOpacity = FogInfo.FogMaxOpacity;
+				FogRenderer->OnRender(ViewProjection, ViewCameraLocation, Constants);
+			}
+		}
 		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
 		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	}
@@ -457,10 +479,6 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 
 	if (Gizmo->GetTarget())
 	{
-		auto Target = Cast<UPrimitiveComponent>(Gizmo->GetTarget());
-
-		FBox box = Target->CalcBounds();
-
 		RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
 
 		GizmoRenderer->OnRender(
