@@ -37,7 +37,7 @@ UWorld::~UWorld()
 {
 }
 
-bool UWorld::Init()
+bool UWorld::Init(EWorldType InType)
 {
 	// Spawn Actor로 카메라 생성하고 세팅하기
 	PersistentLevel = FObjectFactory::ConstructObject<ULevel>();
@@ -55,6 +55,9 @@ bool UWorld::Init()
 
 	//카메라 생성
 	CreateMainCamera();
+
+	// 월드 타입 설정 (Editor, Game, PIE 등)
+	WorldType = InType;
 
 	return true;
 }

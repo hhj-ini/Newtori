@@ -51,7 +51,7 @@ public:
     // 우클릭 Capture View에 이동·Euler Yaw/Pitch·줌 입력을 적용한다.
     void UpdateInput(float DeltaTime, FVector2 LocalMousePosition, float MoveSpeed, float MouseSensitivity);
     // Tick 뒤 현재 World의 ID·경계만 캡처하며 피킹은 Component에 위임한다.
-    void CaptureWorld(UWorld& World);
+    void CaptureWorld();
 
     // 레이아웃과 Rect 상태를 기준으로 지정 View의 활성 여부를 반환한다.
     bool IsViewActive(int32 ViewIndex) const;
@@ -103,6 +103,10 @@ public:
     // 현재 가로·세로 Split 비율을 반환한다.
     const FSplitRatio& GetSplitRatio() const { return SplitRatio; }
 
+    // 뷰포트 월드 설정
+    void SetCurrentWorld(UWorld* InWorld) { CurrentWorld = InWorld; }
+    UWorld* GetCurrentWorld() { return CurrentWorld; }
+
 private:
     // 직교 View의 논리 위치는 유지하고 렌더·컬링·피킹용 깊이 범위만 확장한다.
     FViewCamera GetRenderCamera(int32 ViewIndex) const;
@@ -148,4 +152,7 @@ private:
     TArray<uint8> SelectedLODs;
     bool bCapturedBillboard = false;
     bool bCapturedParticle = false;
+
+    // 현재 뷰포트의 월드
+    UWorld* CurrentWorld = nullptr;
 };
