@@ -43,6 +43,9 @@ public:
 	bool ConsumeCameraPresetRequest(int32& OutViewIndex, EMultipleViewportsCameraPreset& OutPreset);
 
 	// Todo: Post process
+	const FRenderingInfo& GetFogRenderingInfo(int32 ViewIndex) const;
+	FTexture2D* GetFogColor(int32 ViewIndex) const;
+
 	const FRenderingInfo& GetPostProcessRenderingInfo(int32 ViewIndex) const;
 	FTexture2D* GetSceneColor(int32 ViewIndex) const;
 
@@ -58,11 +61,13 @@ private:
 		uint32 Width = 0;
 		uint32 Height = 0;
 		TUniquePtr<FTexture2D> ColorTarget;
-		TUniquePtr<FTexture2D> DepthTarget;
 		FRenderingInfo RenderingInfo{};
 
+		TUniquePtr<FTexture2D> DepthTarget;
 		// Todo: Post Process
 		TUniquePtr<FTexture2D> SceneColor;
+		TUniquePtr<FTexture2D> FogColor;
+		FRenderingInfo FogRenderingInfo{};
 		FRenderingInfo PostProcessRenderingInfo{};
 		EViewportDisplayMode DisplayMode = EViewportDisplayMode::SceneColor;
 	};

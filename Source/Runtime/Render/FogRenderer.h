@@ -28,8 +28,8 @@ public:
 	~FFogRenderer() = default;
 	bool Init(FRenderDevice* InRenderDevice);
 
-	// 현재 RTV에 합성한다. 바인딩된 DSV를 복사해 읽고 호출 전 상태를 복원한다.
-	void OnRender(const FMatrix& ViewProjection, const FVector& CameraPosition, const FHeightFogConstants& FogConstants);
+	// 현재 RTV(FogColor)에 장면 색과 깊이로 계산한 최종 색을 쓴다.
+	bool OnRender(FTexture2D* SceneColor, FTexture2D* SceneDepth, const FMatrix& ViewProjection, const FVector& CameraPosition, const FHeightFogConstants& FogConstants);
 
 private:
 	FRenderDevice* RenderDevice = nullptr; // EngineLoop owns this device.
@@ -38,12 +38,7 @@ private:
 		ComPtr<ID3D11VertexShader> VS;
 		ComPtr<ID3D11PixelShader> PS;
 		ComPtr<ID3D11Buffer> ViewBuffer, FogBuffer;
-		ComPtr<ID3D11BlendState> Blend;
-		ComPtr<ID3D11Texture2D> DepthCopy;
-		ComPtr<ID3D11ShaderResourceView> DepthSRV;
-		UINT Width = 0, Height = 0;
 		bool AttemptedInit = false;
 		bool ReportedDraw = false;
-		bool ReportedMissingDepth = false;
 	} Resources;
 };

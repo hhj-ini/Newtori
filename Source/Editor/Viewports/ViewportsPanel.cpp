@@ -132,6 +132,16 @@ bool FViewportsPanel::ConsumeCameraPresetRequest(int32& OutViewIndex, EMultipleV
 	return true;
 }
 
+const FRenderingInfo& FViewportsPanel::GetFogRenderingInfo(int32 ViewIndex) const
+{
+	return Slots[ViewIndex].FogRenderingInfo;
+}
+
+FTexture2D* FViewportsPanel::GetFogColor(int32 ViewIndex) const
+{
+	return Slots[ViewIndex].FogColor.get();
+}
+
 // View Texture와 Splitter·Layout·Preset UI를 그리고 요청을 기록한다.
 void FViewportsPanel::OnRender()
 {
@@ -470,20 +480,12 @@ void FViewportsPanel::ResizeSlot(FViewSlot& Slot, const uint32 Width, const uint
 	Desc.Usage = D3D11_USAGE_DEFAULT;
 	Desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 	Slot.ColorTarget = RenderCommand::CreateTexture2D(Desc);
-
-	// Todo: Post process
 	Slot.SceneColor = RenderCommand::CreateTexture2D(Desc);
+	Slot.FogColor = RenderCommand::CreateTexture2D(Desc); // RGBA8, RTV + SRV
 
-	/*
-	Desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;x
-	Desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-	Slot.DepthTarget = RenderCommand::CreateTexture2D(Desc);
-	*/
-	
 	Desc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	Desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 	Slot.DepthTarget = RenderCommand::CreateTexture2D(Desc);
-	//
 
 	Slot.Height = Height;
 	Slot.RenderingInfo.ColorRenderTargets.Reset();
@@ -498,7 +500,17 @@ void FViewportsPanel::ResizeSlot(FViewSlot& Slot, const uint32 Width, const uint
 	Slot.RenderingInfo.ColorRenderTargets.Add(ColorDesc);
 	Slot.RenderingInfo.DepthStencil.Texture = Slot.DepthTarget.get();
 
+	Slot.FogRenderingInfo.ColorRenderTargets.Reset();
+	Slot.FogRenderingInfo.ViewportSetting = Slot.RenderingInfo.ViewportSetting;
+
+	FRenderingDesc FogColorDesc{};
+	FogColorDesc.Texture = Slot.FogColor.get();
+	FogColorDesc.LoadOp = ERenderTargetLoadOp::Clear;
+	Slot.FogRenderingInfo.ColorRenderTargets.Add(FogColorDesc);
+	Slot.FogRenderingInfo.DepthStencil.Texture = nullptr;
+
 	Slot.PostProcessRenderingInfo.ColorRenderTargets.Reset();
+
 	Slot.PostProcessRenderingInfo.ViewportSetting.Width = Width;
 	Slot.PostProcessRenderingInfo.ViewportSetting.Height = Height;
 

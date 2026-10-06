@@ -19,7 +19,8 @@ cbuffer HeightFogConstants : register(b1)
     float2 padding;
 };
 
-Texture2D    SceneDepthTexture : register(t0);
+Texture2D<float4> SceneColorTexture : register(t0);
+Texture2D<float>  SceneDepthTexture : register(t1);
 
 
 struct PSInput
@@ -44,11 +45,12 @@ PSInput mainVS(uint VertexID : SV_VertexID)
 
 float4 mainPS(PSInput Input) : SV_TARGET
 {
-    // 화면 좌표 -> 원평면 위의 월드 좌표 -> 카메라가 그쪽을 보는 방향
-    float2 NDC = Input.UV * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
-    
-    float Depth = SceneDepthTexture.Load(int3(int2(Input.Position.xy), 0)).r;
     int2 Pixel = int2(Input.Position.xy);
+    float4 SceneColor = SceneColorTexture.Load(int3(Pixel, 0));
+    float Depth = SceneDepthTexture.Load(int3(Pixel, 0));
+
+    // 화면 좌표 -> 깊이 지점의 월드 좌표
+    float2 NDC = Input.UV * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
 
     // 픽셀의 월드 좌표 계산
     float4 WorldPoint = mul(float4(NDC, Depth, 1.0f), InverseViewProjection);
@@ -61,6 +63,12 @@ float4 mainPS(PSInput Input) : SV_TARGET
     float3 Ray = WorldPoint.xyz - CameraPosition;
     
     float RayLength = length(Ray); // 카메라에서 월드 포인트까지의 거리
+    if (RayLength <= 0.00001f ||
+        (FogCutoffDistance > 0.0f && RayLength >= FogCutoffDistance))
+    {
+        return SceneColor;
+    }
+
     float Start = clamp(StartDistance, 0.0f, RayLength); // 안개 시작 지점
     float FogLength = RayLength - Start; // 안개가 적용되는 거리
     float3 Direction = Ray / RayLength; // 카메라에서 월드 포인트까지의 방향 벡터
@@ -69,9 +77,8 @@ float4 mainPS(PSInput Input) : SV_TARGET
     // 시작지점 전까지는 색깔을 원색으로 맞춤
     if (FogLength <= 0.0f)
     {
-        return float4(0, 0, 0, 1);
+        return SceneColor;
     }
-    
     
     // 안개 시작 지점의 밀도 계산. exp2는 2의 거듭제곱을 계산하는 함수
     float StartDensity = FogDensity * exp2(-FogHeightFalloff * (StartHeight - FogHeight)); // 안개 시작 지점의 밀도
@@ -100,14 +107,8 @@ float4 mainPS(PSInput Input) : SV_TARGET
     }
     
     
-    // InScattering Color 계산
-    float3 InScattering = FogInscatteringColor.rgb * (1 - T); // 안개에 의해 산란된 빛의 색상
+    T = saturate(T);
+    float3 Result = SceneColor.rgb * T + FogInscatteringColor.rgb * (1.0f - T);
     
-    // 블렌딩 설정
-    // SrcBlend  = D3D11_BLEND_ONE;
-    // DestBlend = D3D11_BLEND_SRC_ALPHA;
-    return float4(InScattering, T);
-    
-    
-
+    return float4(Result, SceneColor.a);
 }

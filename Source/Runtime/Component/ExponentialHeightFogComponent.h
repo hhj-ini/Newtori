@@ -24,22 +24,19 @@ public:
 	UExponentialHeightFogComponent& operator=(const UExponentialHeightFogComponent&) = delete;
 
 	float GetFogDensity() const { return FogDensity; }
-	void SetFogDensity(float InFogDensity) { FogDensity = InFogDensity;  MarkFogDirty();}
+	void SetFogDensity(float InFogDensity) { FogDensity = InFogDensity; ClampFogValues(); MarkFogDirty(); }
 
 	float GetFogHeightFalloff() const { return FogHeightFalloff; }
-	void SetFogHeightFalloff(float InFogHeightFalloff) { FogHeightFalloff = InFogHeightFalloff; MarkFogDirty();
-	}
+	void SetFogHeightFalloff(float InFogHeightFalloff) { FogHeightFalloff = InFogHeightFalloff; ClampFogValues(); MarkFogDirty(); }
 
 	float GetStartDistance() const { return StartDistance; }
-	void SetStartDistance(float InStartDistance) { StartDistance = InStartDistance; MarkFogDirty();}
+	void SetStartDistance(float InStartDistance) { StartDistance = InStartDistance; ClampFogValues(); MarkFogDirty(); }
 
 	float GetFogCutoffDistance() const { return FogCutoffDistance; }
-	void SetFogCutoffDistance(float InFogCutoffDistance) { FogCutoffDistance = InFogCutoffDistance; MarkFogDirty();
-	}
+	void SetFogCutoffDistance(float InFogCutoffDistance) { FogCutoffDistance = InFogCutoffDistance; ClampFogValues(); MarkFogDirty(); }
 
 	float GetFogMaxOpacity() const { return FogMaxOpacity; }
-	void SetFogMaxOpacity(float InFogMaxOpacity) { FogMaxOpacity = InFogMaxOpacity; MarkFogDirty();
-	}
+	void SetFogMaxOpacity(float InFogMaxOpacity) { FogMaxOpacity = InFogMaxOpacity; ClampFogValues(); MarkFogDirty(); }
 
 	const FVector4& GetFogInscatteringColor() const { return FogInscatteringColor; }
 	void SetFogInscatteringColor(const FVector4& InFogInscatteringColor) { FogInscatteringColor = InFogInscatteringColor;  MarkFogDirty();
@@ -48,9 +45,12 @@ public:
 	void OnTransformDirty() override;
 	void MarkFogDirty();
 	void OnPropertyChanged(const FProperty& Property) override;
+	void Serialize(json& Handle, bool bIsLoading) override;
 
 
 private:
+	void ClampFogValues();
+
 	// 안개의 기본 농도
 	float FogDensity = 0.3f;
 	// 높이가 증가함에 따라 안개가 얼마나 빠르게 희미해지는지 제어하는 계수

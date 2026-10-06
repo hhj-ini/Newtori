@@ -3,6 +3,7 @@
 
 #include "imgui_internal.h"
 #include "Editor/HitoriEd/EditorDragDrop.h"
+#include "Component/ExponentialHeightFogComponent.h"
 #include "Component/PrimitiveComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TextRenderComponent.h"
@@ -12,6 +13,7 @@
 #include "Text/Font.h"
 #include "UObject/UObjectIterator.h"
 #include "GameFramework/Actor.h"
+#include <cfloat>
 
 namespace
 {
@@ -542,8 +544,24 @@ namespace
 		switch (Property.Type)
 		{
 		case EPropertyType::Float:
-			bIsChanged =ImGui::DragFloat(Label.c_str(), static_cast<float*>(ValuePtr), 0.1f);
+		{
+			const bool bFog = Object->IsA(UExponentialHeightFogComponent::StaticClass());
+			const bool bOpacity = Property.Name == "FogMaxOpacity";
+			const bool bNonNegativeFogValue = Property.Name == "FogDensity" ||
+				Property.Name == "FogHeightFalloff" || Property.Name == "StartDistance" ||
+				Property.Name == "FogCutoffDistance";
+
+			if (bFog && (bOpacity || bNonNegativeFogValue))
+			{
+				bIsChanged = ImGui::DragFloat(Label.c_str(), static_cast<float*>(ValuePtr),
+					0.1f, 0.0f, bOpacity ? 1.0f : FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+			}
+			else
+			{
+				bIsChanged = ImGui::DragFloat(Label.c_str(), static_cast<float*>(ValuePtr), 0.1f);
+			}
 			break;
+		}
 
 		case EPropertyType::Int:
 			ImGui::DragInt(Label.c_str(), static_cast<int*>(ValuePtr), 1.0f);

@@ -360,6 +360,8 @@ void UEditorEngine::UpdateGizmoAndPicking()
 // View 행렬로 Scene·Grid·Gizmo·텍스트·Outline을 렌더한다.
 void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
 {
+	const bool bDrawPrimitives = SettingsPanel->GetSettings().bDrawPrimitives;
+	FTexture2D* PostProcessSource = ViewportsPanel->GetSceneColor(ViewIndex);
 	RenderCommand::BeginRenderPass(ViewRenderingInfo);
 	{
 		if (SettingsPanel->GetSettings().bDrawBatchLine)
@@ -387,7 +389,6 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 
 		}
 
-		const bool bDrawPrimitives = SettingsPanel->GetSettings().bDrawPrimitives;
 		// 삼각형 연결은 유지하고 View별 Fill Mode만 선택한다.
 		const ERasterizerState SceneRasterizerState = MultipleViewportsAdapter.IsViewWireframe(ViewIndex)
 			? ERasterizerState::Wireframe : ERasterizerState::SolidBack;
@@ -404,8 +405,13 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
 		Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
 		Renderer->RenderOpaque(ViewProjection);
-		// Fog pass: preserve scene color and composite before editor overlays.
-		if (FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+
+		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
+	}
+		RenderCommand::EndRenderPass(ViewRenderingInfo);
+
+		if (bDrawPrimitives && FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
 		{
 			const auto& Fogs = World->GetScene().ExponentialFogs;
 			if (!Fogs.IsEmpty())
@@ -419,12 +425,31 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 				Constants.StartDistance = FogInfo.StartDistance;
 				Constants.FogCutoffDistance = FogInfo.FogCutoffDistance;
 				Constants.FogMaxOpacity = FogInfo.FogMaxOpacity;
-				FogRenderer->OnRender(ViewProjection, ViewCameraLocation, Constants);
+
+				const FRenderingInfo& FogPass = ViewportsPanel->GetFogRenderingInfo(ViewIndex);
+				RenderCommand::BeginRenderPass(FogPass);
+				const bool bFogDrawn = FogRenderer->OnRender(
+					PostProcessSource,
+					ViewRenderingInfo.DepthStencil.Texture,
+					ViewProjection,
+					ViewCameraLocation,
+					Constants);
+				RenderCommand::EndRenderPass(FogPass);
+				if (bFogDrawn)
+					PostProcessSource = ViewportsPanel->GetFogColor(ViewIndex);
 			}
 		}
-		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
-		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
-	}
+
+		// FogColor 또는 SceneColor에서 색 렌더링을 이어가며 기존 깊이를 유지한다.
+		FRenderingInfo ContinuationInfo{};
+		ContinuationInfo.ViewportSetting = ViewRenderingInfo.ViewportSetting;
+		FRenderingDesc ContinuationColor = ViewRenderingInfo.ColorRenderTargets[0];
+		ContinuationColor.Texture = PostProcessSource;
+		ContinuationColor.LoadOp = ERenderTargetLoadOp::Load;
+		ContinuationInfo.ColorRenderTargets.Add(ContinuationColor);
+		ContinuationInfo.DepthStencil = ViewRenderingInfo.DepthStencil;
+		ContinuationInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+		RenderCommand::BeginRenderPass(ContinuationInfo);
 
 		if (SettingsPanel->GetSettings().bDrawBatchLine)
 		{
@@ -476,8 +501,8 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 				ViewProjection
 			);
 		}
+		RenderCommand::EndRenderPass(ContinuationInfo);
 	}
-	RenderCommand::EndRenderPass(ViewRenderingInfo);
 
 	// Todo: Post process
 	const FRenderingInfo& PostProcessInfo = ViewportsPanel->GetPostProcessRenderingInfo(ViewIndex);
@@ -504,7 +529,7 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 
 		// 픽셀 셰이더의 b0에 연결한다.
 		RenderCommand::BindConstantBuffer(0, PostProcessConstantBuffer.get(), EShaderBindFlagBits::Pixel);
-		RenderCommand::BindShaderResource(0, ViewportsPanel->GetSceneColor(ViewIndex), EShaderBindFlagBits::Pixel);
+		RenderCommand::BindShaderResource(0, PostProcessSource, EShaderBindFlagBits::Pixel);
 		RenderCommand::BindShaderResource(1, ViewRenderingInfo.DepthStencil.Texture, EShaderBindFlagBits::Pixel);
 
 		RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Pixel);
