@@ -4,6 +4,8 @@
 
 #include <functional>
 
+class UTexture2D;
+
 class FEditorUI
 {
 public:
@@ -45,12 +47,16 @@ private:
 	std::function<void()> OnSaveScene;
 	std::function<void()> OnSaveSceneAs;
 
+
+private:	// PIE 관련
 	// 툴바 높이
-	float ToolBarHeight = 50.0f;
+	float ToolBarHeight = 65.0f;
 
 	// PIE 연동
 	std::function<void()> OnStartPIE;
 	std::function<void()> OnEndPIE;
 
-	
+	UTexture2D* PlayIcon = nullptr;
+	UTexture2D* StopIcon = nullptr;
+	UTexture2D* SaveIcon = nullptr;
 };

@@ -110,23 +110,27 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 void UWorld::Tick(float DeltaTime)
 {
-	while (!BeginPlayList.IsEmpty())
+	if (EWorldType::PIE == WorldType)
 	{
-		BeginPlayList.Peek()->BeginPlay();
-		BeginPlayList.Dequeue();
-	}
-
-	{
-		SCOPE_CYCLE_COUNTER(STAT_ActorTick);
-		// 모든 Actor를 도는 대신 등록된 Tick 함수(메인 카메라 포함)만 실행한다.
-		TickTaskManager.RunAllTickGroups(DeltaTime);
-
-		for (ULevel* Level : Levels)
+		while (!BeginPlayList.IsEmpty())
 		{
-			PathTracker.Tick(Level->GetActors(), DeltaTime);
+			BeginPlayList.Peek()->BeginPlay();
+			BeginPlayList.Dequeue();
+		}
+
+		{
+			SCOPE_CYCLE_COUNTER(STAT_ActorTick);
+			// 모든 Actor를 도는 대신 등록된 Tick 함수(메인 카메라 포함)만 실행한다.
+			TickTaskManager.RunAllTickGroups(DeltaTime);
+
+			for (ULevel* Level : Levels)
+			{
+				PathTracker.Tick(Level->GetActors(), DeltaTime);
+			}
 		}
 	}
-
+	
+	// PIE, Editor 상관 없이 무조건 실행되어야 함.
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
 		Scene.UpdateAllTransforms();
