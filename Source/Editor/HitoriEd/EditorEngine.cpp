@@ -577,6 +577,11 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 
 void UEditorEngine::StartPIE()
 {
+	if (bIsPlaying)
+	{	// 중복 실행 방지
+		return;	
+	}
+
 	bIsPlaying = true;
 	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
 	if (!EditorWorld)
