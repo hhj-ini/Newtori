@@ -7,7 +7,7 @@
 
 AStaticMeshActor::AStaticMeshActor()
 {
-	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>("UPrimitiveComponent");
+	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>("UStaticMeshComponent");
 	SetRootComponent(StaticMeshComponent);
 }
 

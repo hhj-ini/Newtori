@@ -48,10 +48,23 @@ USceneComponent::~USceneComponent()
 	}
 	else
 	{
-		for (USceneComponent* Child : Children)
+		USceneComponent* NewParent = AttachParent;
+
+		for (uint32 i = 0; i < Children.Num(); ++i)
 		{
+			USceneComponent* Child = Children[i];
+
+			FMatrix NewLocalMatrix = ChildWorldMatrices[i];
+
+			if (NewParent)
+			{
+				FMatrix NewParentWorld = NewParent->GetWorldMatrix();
+				NewLocalMatrix = ChildWorldMatrices[i] * NewParentWorld.Inverse();
+			}
+
 			Child->AttachParent = nullptr;
-			Child->SetupAttachment(AttachParent);
+			Child->SetupAttachment(NewParent);
+			Child->SetTransform(FTransform::FromMatrix(NewLocalMatrix));
 		}
 	}
 
