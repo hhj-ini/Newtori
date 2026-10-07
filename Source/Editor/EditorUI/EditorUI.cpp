@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Editor/EditorUI/EditorUI.h"
+#include <imgui_internal.h>
 
 bool FEditorUI::Init(bool bInUseDockSpace, bool bInPassthruCentralNode)
 {
@@ -22,7 +23,7 @@ void FEditorUI::Tick(float DeltaTime)
 void FEditorUI::OnRender()
 {
 	DrawMainMenuBar();
-
+	
 	if (bUseDockSpace)
 	{
 		static bool dockspaceOpen = true;
@@ -39,8 +40,8 @@ void FEditorUI::OnRender()
 		if (optFullscreen)
 		{
 			const ImGuiViewport* viewport = ImGui::GetMainViewport();
-			ImGui::SetNextWindowPos(viewport->WorkPos);
-			ImGui::SetNextWindowSize(viewport->WorkSize);
+			ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + ToolBarHeight));
+			ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, viewport->WorkSize.y - ToolBarHeight));
 			ImGui::SetNextWindowViewport(viewport->ID);
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -95,6 +96,7 @@ void FEditorUI::OnRender()
 
 		ImGui::End();
 	}
+	DrawMainToolBar();
 
 	for (auto& Panel : Panels)
 	{
@@ -143,4 +145,82 @@ void FEditorUI::DrawMainMenuBar()
 		ImGui::EndMainMenuBar();
 	}
 	ImGui::PopStyleVar(2);
+}
+
+// Unreal Style 따라함
+void FEditorUI::DrawMainToolBar()
+{
+	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	
+	// 메인 툴 바가 그려질 위치. viewport 의 pos 참고 / ImGuiCond_Always - 매프레임 위치 고정
+	ImGui::SetNextWindowPos(viewport->WorkPos, ImGuiCond_Always);
+	// 메인 툴 바가 그려질 사이즈. viewport 의 size 참고
+	ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, ToolBarHeight), ImGuiCond_Always);
+	ImGui::SetNextWindowViewport(viewport->ID);
+
+	// 패딩 및 보더 정리
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);	// 모서리 둥근 정도 - 0 -> 각지게
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);	// 외곽 테두리 두께 - 0
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 3.0f));	// 창 내부 여백
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 0.0f));		// 위젯간 간격
+	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));		// 구분을 위해서 색상 조정
+
+	constexpr ImGuiWindowFlags Flags =
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoSavedSettings |
+		ImGuiWindowFlags_NoDocking;
+
+	if (ImGui::Begin("MainToolBar", nullptr, Flags))
+	{
+		// 기본 버튼 사이즈
+		const ImVec2 ButtonSize(32.0f, 32.0f);	
+		// 저장 버튼
+		{
+			if (ImGui::Button("Save"))
+			{
+				 if (OnSaveScene) OnSaveScene(); 
+			}
+
+			ImGui::SameLine();
+		}
+		// 구분선
+		ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+		ImGui::SameLine();
+		// PIE 관련 버튼
+		{
+			if (ImGui::Button("Play"))
+			{
+				if (OnStartPIE) 
+					OnStartPIE();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Stop"))
+			{
+				if (OnEndPIE) 
+OnEndPIE();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Setting"))
+			{
+				ImGui::OpenPopup("PlaySetting");
+			}
+
+			if (ImGui::BeginPopup("PlaySetting"))
+			{
+				if (ImGui::MenuItem("Selected Viewport")) { ; }
+				if (ImGui::MenuItem("New Editor Window (PIE)")) { ; }
+				ImGui::EndPopup();
+			}
+			
+
+		}
+
+		ImGui::End();
+	}
+	// 앞서 설정한 스타일 popping
+	ImGui::PopStyleVar(4);
+	ImGui::PopStyleColor(1);
 }

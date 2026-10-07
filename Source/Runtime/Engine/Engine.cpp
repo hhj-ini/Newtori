@@ -46,6 +46,7 @@ bool UEngine::DeleteWorldContext(FWorldContext* TargetContext)
 	{
 		if (TargetContext == WorldList[i].get())
 		{
+			delete WorldList[i].get()->CurrentWorld;
 			WorldList.RemoveAt(i, 1);
 			return true;
 		}

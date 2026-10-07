@@ -1,6 +1,8 @@
 class AActor;
 class UWorld;
 
+enum class EWorldType;
+
 class FObjectDuplicator
 {
 public:
@@ -8,5 +10,5 @@ public:
 	static AActor* DuplicateActorToWorld(const AActor* SourceActor, UWorld* DestinationWorld);
 
 	// 원본 World의 Level Actor들을 복제한 새로운 World를 생성한다.
-	static UWorld* DuplicateWorld(const UWorld* SourceWorld);
+	static UWorld* DuplicateWorld(const UWorld* SourceWorld, EWorldType InType);
 };

@@ -114,6 +114,8 @@ private:
 	FOutlinerPanel* OutlinerPanel = nullptr;
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
 
+	bool bIsPlaying = false;
+
 	void ResetSceneSelection();
 
 	void CreateNewScene();

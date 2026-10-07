@@ -33,8 +33,7 @@
 #include "Core/EngineLog.h"
 #include "Core/Stats/LightweightStats.h"
 
-// 임시
-UWorld* DuplicateWorld(const UWorld* SourceWorld) { return nullptr; };
+#include "ObjectSystem/ObjectDuplication.h"
 
 namespace
 {
@@ -84,6 +83,9 @@ bool UEditorEngine::Init()
 	EditorUI->SetOpenSceneCallback([this]() { OpenScene(); });
 	EditorUI->SetSaveSceneCallback([this]() { SaveCurrentScene(); });
 	EditorUI->SetSaveSceneAsCallback([this]() { SaveSceneAs(); });
+
+	EditorUI->SetStartPIECallback([this]() {StartPIE();});
+	EditorUI->SetEndPIECallback([this]() {EndPIE();});
 
 	OutputLogPanel = EditorUI->AddEditorPanel<FOutputLogPanel>();
 	FLog::AddSink(OutputLogPanel);
@@ -273,12 +275,13 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 			continue;
 		}
 		// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
+
 		{
 			SCOPE_CYCLE_COUNTER(STAT_WorldTick);
 			World->Tick(DeltaTime);
 		}
 
-		if (EWorldType::Editor == WorldList[i].get()->WorldType)
+		if (!bIsPlaying)
 		{
 			UpdateGizmoAndPicking(World);
 		}
@@ -385,7 +388,7 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 	RenderCommand::BeginRenderPass(ViewRenderingInfo);
 	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
 	{
-	if (SettingsPanel->GetSettings().bDrawBatchLine)
+		if (SettingsPanel->GetSettings().bDrawBatchLine)
 		{
 			// 라인 배처는 매 프레임 한 번만 비우고 한 번만 그린다.
 			// 바운딩박스는 그 안에 쌓이는 여러 항목 중 하나일 뿐이다.
@@ -422,14 +425,14 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 			RenderCommand::SetBlendState(EBlendState::Opaque);
 			RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
 
-		RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
-		Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
-		Renderer->RenderOpaque(ViewProjection);
+			RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
+			Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
+			Renderer->RenderOpaque(ViewProjection);
 
-		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
-		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
-	}
+			// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+			RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
+		}
 		RenderCommand::EndRenderPass(ViewRenderingInfo);
 
 		if (bDrawPrimitives && FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
@@ -575,14 +578,14 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 	RenderCommand::BeginRenderPass(OverlayInfo);
 	{
 		// 스텐실 기반이라 선택 대상의 가시성이 꺼져 있어도 외곽선만 그린다.
-		if (Outline->GetTarget())
+		if (Outline->GetTarget() && !bIsPlaying)
 		{
 			OutlineRenderer->OnRender(*Outline, ViewProjection, ViewRenderingInfo.ViewportSetting);
 		}
 
-	if (Gizmo->GetTarget())
-	{
-		RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
+		if (Gizmo->GetTarget() && !bIsPlaying)
+		{
+			RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
 
 			GizmoRenderer->OnRender(
 				*Gizmo,
@@ -674,13 +677,24 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 
 void UEditorEngine::StartPIE()
 {
+	if (bIsPlaying)
+	{	// 중복 실행 방지
+		return;	
+	}
+
+	bIsPlaying = true;
 	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
 	if (!EditorWorld)
 	{
 		return;
 	}
 
-	UWorld* PIEWorld = DuplicateWorld(EditorWorld);
+	UWorld* PIEWorld = FObjectDuplicator::DuplicateWorld(EditorWorld, EWorldType::PIE);
+	if (!PIEWorld)
+	{
+		HTR_LOG(Error, "Failed to duplicate world for PIE");
+		return;
+	}
 	
 	FWorldContext* PIEContext = CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld);
 
@@ -689,6 +703,7 @@ void UEditorEngine::StartPIE()
 
 void UEditorEngine::EndPIE()
 {
+	bIsPlaying = false;
 	FWorldContext* PIEContext = GetWorldContext(EWorldType::PIE);
 	if (!PIEContext)
 	{
