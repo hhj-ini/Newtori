@@ -93,7 +93,7 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	for (UActorComponent* Component : NewActor->GetComponents())
 	{
 		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
-			Scene.AddPrimitive(Primitive);
+			Primitive->RegisterComponent();
 
 		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 			Scene.AddExponentialHeightFog(Fog);

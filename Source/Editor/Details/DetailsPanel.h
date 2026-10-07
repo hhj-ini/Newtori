@@ -34,6 +34,10 @@ private:
 
 	USceneComponent* ComponentToExpandNextFrame = nullptr;
 
+	// Tree 순회 중 AttachChildren 변경으로 인한 iterator invalidation을 피하기 위해 DnD reparent를 지연 처리한다.
+	USceneComponent* PendingDraggedComponent = nullptr;
+	USceneComponent* PendingAttachParent = nullptr;
+
 	UActorComponent* SelectedComponent = nullptr;
 	void DrawComponentTree(AActor* Owner);
 	void DrawSceneComponentNode(USceneComponent* Component);

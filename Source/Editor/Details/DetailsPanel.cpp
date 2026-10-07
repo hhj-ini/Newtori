@@ -105,6 +105,14 @@ namespace
 	bool DrawRotatorAsXYZ(const FString& _label, FRotator& _rotator)
 	{
 		float Euler[3] = { _rotator.Roll, _rotator.Pitch, _rotator.Yaw };
+
+		// UI에서 -0.00으로 표시되는 미세한 회전값은 0으로 표시한다.
+		for (float& Angle : Euler)
+		{
+			if (std::abs(Angle) < 0.005f)
+				Angle = 0.0f;
+		}
+
 		const bool isChanged = DrawVector3Controller(_label, Euler, 0.0f, 55.0f);
 		if (isChanged)
 		{
@@ -859,13 +867,36 @@ void FDetailsPanel::DrawComponentTree(AActor* Owner)
 			ImGui::PopID();
 		}
 	}
+
+	if (PendingDraggedComponent && PendingAttachParent)
+	{
+		USceneComponent* DraggedComponent = PendingDraggedComponent;
+		USceneComponent* NewParent = PendingAttachParent;
+
+		// 다음 프레임까지 요청이 남지 않도록 먼저 비운다.
+		PendingDraggedComponent = nullptr;
+		PendingAttachParent = nullptr;
+
+		// Reparent 후에도 World Transform을 유지한다.
+		FMatrix OldWorld = DraggedComponent->GetWorldMatrix();
+		FMatrix NewParentWorld = NewParent->GetWorldMatrix();
+		FMatrix NewLocalMatrix = OldWorld * NewParentWorld.Inverse();
+
+		DraggedComponent->SetupAttachment(NewParent);
+
+		// Self/Cycle 등으로 Attachment가 거부되지 않은 경우에만 Local을 갱신한다.
+		if (DraggedComponent->GetAttachParent() == NewParent)
+		{
+			DraggedComponent->SetTransform(FTransform::FromMatrix(NewLocalMatrix));
+		}
+	}
 }
 
 void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component)
 {
 	ImGui::PushID(Component);
 
-	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow;
+	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen;
 	if (Component == SelectedComponent)	Flags |= ImGuiTreeNodeFlags_Selected;
 
 	const bool bHasChildren = !Component->GetAttachChildren().IsEmpty();
@@ -897,15 +928,10 @@ void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component)
 		{
 			USceneComponent* DraggedComponent = *static_cast<USceneComponent**>(Payload->Data);
 
-			// Reparent 후에도 World Transform을 유지하기 위해
-			// 기존 World를 새 부모 기준 Relative Transform으로 변환한다.
-			FMatrix OldWorld = DraggedComponent->GetWorldMatrix();
-			FMatrix NewParentWorld = Component->GetWorldMatrix();
-			FMatrix NewLocalMatrix = OldWorld * NewParentWorld.Inverse();
-			FTransform NewLocalTransform = FTransform::FromMatrix(NewLocalMatrix);
-
-			DraggedComponent->SetupAttachment(Component);
-			DraggedComponent->SetTransform(NewLocalTransform);
+			// Tree 순회 중 hierarchy를 수정하지 않고,
+			// 순회가 끝난 뒤 처리하도록 요청만 저장한다.
+			PendingDraggedComponent = DraggedComponent;
+			PendingAttachParent = Component;
 
 			// 드롭된 자식이 바로 보이도록 새 부모를 다음 프레임에 펼친다.
 			ComponentToExpandNextFrame = Component;

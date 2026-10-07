@@ -212,8 +212,21 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 		UActorComponent* Component = DetailsPanel->GetSelectedComponent();
 		if (Component)
 		{
+			AActor* Owner = Component->GetOwner();
+
+			bool bWasRoot = false;
+			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+			{
+				bWasRoot = Owner && Owner->GetRootComponent() == SceneComponent;
+			}
 			DetailsPanel->ClearSelectedComponent();
 			Component->DestroyComponent();
+
+			// Root가 교체됐으므로 에디터가 들고 있는 Target도 새 Root로 갱신한다.
+			if (bWasRoot && Owner)
+			{
+				OutlinerPanel->SelectActor(Owner);
+			}
 		}
 		else
 		{
