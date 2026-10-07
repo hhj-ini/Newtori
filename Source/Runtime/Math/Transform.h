@@ -13,6 +13,7 @@ struct FTransform
 	static FTransform Identity;
 
     FMatrix GetLocalMatrix() const;
+	static FTransform FromMatrix(const FMatrix& Matrix);
 
 	FVector GetForward() const;
 	FVector GetUp() const;

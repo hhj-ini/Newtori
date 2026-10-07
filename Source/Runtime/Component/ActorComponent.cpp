@@ -24,6 +24,15 @@ void UActorComponent::UnregisterComponent()
     bRegistered = false;
 }
 
+void UActorComponent::DestroyComponent()
+{
+    // 파생 Component가 살아 있을 때 OnUnregister를 호출해
+    // Scene/Tick 등 외부 시스템의 참조를 먼저 제거한다.
+    UnregisterComponent();
+
+    delete this;
+}
+
 void UActorComponent::OnRegister()
 {
 }

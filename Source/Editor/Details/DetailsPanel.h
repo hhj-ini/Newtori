@@ -22,14 +22,17 @@ public:
 	ImFont* GetCustomFont() { return CustomFont; }
 
 	void SetWorld(UWorld* InWorld) { World = InWorld; }
-	void SetTarget(USceneComponent* InTargetOrNull) { Target = InTargetOrNull; }
+	void SetTarget(USceneComponent* InTargetOrNull) { Target = InTargetOrNull; SelectedComponent = nullptr;}
+
+	UActorComponent* GetSelectedComponent() const { return SelectedComponent; }
+	void ClearSelectedComponent() { SelectedComponent = nullptr; }
 
 private:
 	ImFont* CustomFont = nullptr;
 	UWorld* World = nullptr;
 	USceneComponent* Target = nullptr;
 
-	bool bExpandComponentTreeNextFrame = false;
+	USceneComponent* ComponentToExpandNextFrame = nullptr;
 
 	UActorComponent* SelectedComponent = nullptr;
 	void DrawComponentTree(AActor* Owner);

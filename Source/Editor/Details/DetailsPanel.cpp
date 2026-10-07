@@ -763,16 +763,27 @@ void FDetailsPanel::OnRender()
 
 				if (ImGui::Selectable(Class->Name.c_str()))
 				{
+					USceneComponent* AttachParent = Cast<USceneComponent>(SelectedComponent);
+
 					if (AActor* Owner = Target->GetOwner())
 					{
 						UActorComponent* NewComponent = Owner->AddComponentByClass(Class);
 
 						if (NewComponent)
 						{
-							SelectedComponent = NewComponent;
-							bExpandComponentTreeNextFrame = true;
-						}
+							if (USceneComponent* NewSceneComponent = Cast<USceneComponent>(NewComponent)) 
+							{
+								// SceneComponent를 선택한 상태에서 추가했으면 그 밑으로 이동
+								if (AttachParent)
+								{
+									NewSceneComponent->SetupAttachment(AttachParent);
+								}
 
+								// 실제 최종 부모를 펼침
+								ComponentToExpandNextFrame = NewSceneComponent->GetAttachParent();
+							}
+							SelectedComponent = NewComponent;
+						}
 						ImGui::CloseCurrentPopup();
 					}
 				}
@@ -820,13 +831,8 @@ void FDetailsPanel::DrawComponentTree(AActor* Owner)
 	USceneComponent* Root = Owner->GetRootComponent();
 	if (Root)
 	{
-		if (bExpandComponentTreeNextFrame)
-			ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-
 		DrawSceneComponentNode(Root);
 	}
-
-	bExpandComponentTreeNextFrame = false;
 
 	for (UActorComponent* Component : Owner->GetComponents())
 	{
@@ -865,10 +871,49 @@ void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component)
 	const bool bHasChildren = !Component->GetAttachChildren().IsEmpty();
 	if (!bHasChildren) Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
+	if (ComponentToExpandNextFrame == Component)
+	{
+		ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+		ComponentToExpandNextFrame = nullptr;
+	}
+
 	FString ComponentName = Component->GetFName().ToString();
 	bool bOpen = ImGui::TreeNodeEx(ComponentName.c_str(), Flags);
 	if (ImGui::IsItemClicked()) SelectedComponent = Component;
 	
+	if (ImGui::BeginDragDropSource())
+	{
+		USceneComponent* DraggedComponent = Component;
+		ImGui::SetDragDropPayload(EditorDragDrop::SceneComponent, &DraggedComponent, sizeof(USceneComponent*));
+
+		ImGui::Text("%s", Component->GetName().c_str());
+
+		ImGui::EndDragDropSource();
+	}
+
+	if (ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::SceneComponent))
+		{
+			USceneComponent* DraggedComponent = *static_cast<USceneComponent**>(Payload->Data);
+
+			// Reparent 후에도 World Transform을 유지하기 위해
+			// 기존 World를 새 부모 기준 Relative Transform으로 변환한다.
+			FMatrix OldWorld = DraggedComponent->GetWorldMatrix();
+			FMatrix NewParentWorld = Component->GetWorldMatrix();
+			FMatrix NewLocalMatrix = OldWorld * NewParentWorld.Inverse();
+			FTransform NewLocalTransform = FTransform::FromMatrix(NewLocalMatrix);
+
+			DraggedComponent->SetupAttachment(Component);
+			DraggedComponent->SetTransform(NewLocalTransform);
+
+			// 드롭된 자식이 바로 보이도록 새 부모를 다음 프레임에 펼친다.
+			ComponentToExpandNextFrame = Component;
+		}
+
+		ImGui::EndDragDropTarget();
+	}
+
 	if (bOpen && bHasChildren)
 	{
 		for (USceneComponent* ChildComponent : Component->GetAttachChildren())

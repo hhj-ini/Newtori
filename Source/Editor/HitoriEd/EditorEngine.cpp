@@ -208,7 +208,18 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 	EditorControlsPanel->FEditorControlsPanel::DeltaTime = DeltaTime;
 
 	if (!ImGui::GetIO().WantTextInput && FInputSystem::IsKeyPressed(EKeyCode::Delete))
-		DeleteActor(OutlinerPanel->GetSelectedActor());
+	{
+		UActorComponent* Component = DetailsPanel->GetSelectedComponent();
+		if (Component)
+		{
+			DetailsPanel->ClearSelectedComponent();
+			Component->DestroyComponent();
+		}
+		else
+		{
+			DeleteActor(OutlinerPanel->GetSelectedActor());
+		}
+	}
 }
 
 // 패널의 Layout·Preset 요청과 입력을 Adapter에 반영한다.

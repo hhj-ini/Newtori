@@ -24,6 +24,8 @@ public:
 	void UnregisterComponent();
 	bool IsRegistered() const { return bRegistered; }
 
+	void DestroyComponent();
+
 	void SetOwner(AActor* InOwner) { Owner = InOwner; }
     AActor* GetOwner() const { return Owner; }
 

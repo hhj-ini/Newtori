@@ -37,6 +37,7 @@ void USceneComponent::SetupAttachment(USceneComponent* InParent)
 	{
 		AttachParent->AttachChildren.Add(this);
 	}
+	MarkTransformDirty();
 }
 
 void USceneComponent::DetachFromParent()
@@ -53,6 +54,7 @@ void USceneComponent::DetachFromParent()
 		}
 	}
 	AttachParent = nullptr;
+	MarkTransformDirty();
 }
 
 FRotator USceneComponent::GetWorldRotation() const
