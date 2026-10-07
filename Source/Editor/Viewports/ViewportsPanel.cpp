@@ -11,6 +11,7 @@
 #include <format>
 
 #include "Core/Stats/EditorStats.h"
+#include "Engine/World.h"
 
 namespace
 {
@@ -238,6 +239,12 @@ void FViewportsPanel::OnRender()
 
 	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
 	{
+		EWorldType WorldType = ViewportAdapter->GetViewportWorld(ViewIndex)->GetWorldType();
+		if (EWorldType::PIE == WorldType)
+		{
+			continue;
+		}
+
 		if (!Slots[ViewIndex].bActive)
 			continue;
 		ImGui::SetCursorScreenPos({

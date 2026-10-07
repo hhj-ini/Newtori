@@ -5,14 +5,6 @@
 
 #include "Engine/World.h"
 
-enum class EWorldType
-{
-	Editor,
-	EditorPreview,
-	PIE,
-	Game,
-};
-
 struct FWorldContext
 {
 	// 월드의 종류
