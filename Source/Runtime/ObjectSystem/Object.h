@@ -8,6 +8,7 @@
 #include "Serialization/Archive.h"
 
 class UClass;
+struct FProperty;
 // Property Reflection
 
 #define REFLECT_START(ClassName) \
@@ -93,6 +94,8 @@ public:
 	inline bool HasAnyFlags(EObjectFlags FlagsToCheck) const { return HasFlag(Flags, FlagsToCheck); }
 	inline bool HasAllFlags(EObjectFlags FlagsToCheck) const { return (Flags & FlagsToCheck) == FlagsToCheck; }
 	inline EObjectFlags GetFlags() const { return Flags; }
+
+	virtual void OnPropertyChanged(const FProperty& Property) {}
 
 	virtual void Serialize(json& Handle, bool bIsLoading);
 

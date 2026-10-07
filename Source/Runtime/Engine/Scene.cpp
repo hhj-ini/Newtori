@@ -117,6 +117,8 @@ void FScene::UpdateAllTransforms()
 	{
 		BVH.Refit();
 	}
+
+	UpdateDirtyFogs();
 }
 
 void FScene::BuildBVH()
@@ -148,3 +150,90 @@ void FScene::MarkRenderStateDirty(FPrimitiveSceneProxy* Proxy)
 	Proxy->bRenderStateQueued = true;
 	RenderStateDirtyProxies.Add(Proxy);
 }
+
+void FScene::MarkFogDirty(uint32 ComponentId)
+{
+	if (!FogComponentMap.Contains(ComponentId)) return; // 등록되지 않은 안개 컴포넌트인지 확인
+	if (DirtyFogIds.Find(ComponentId) != INDEX_NONE) return; // 이미 대기열에 있는지 확인
+
+	DirtyFogIds.Add(ComponentId);
+}
+
+void FScene::UpdateDirtyFogs()
+{
+	for (uint32 id : DirtyFogIds)
+	{
+		if (UExponentialHeightFogComponent** Fog = FogComponentMap.FindOrNull(id))
+		{
+			for (FFogSceneEntry& Entry : ExponentialFogs)
+			{
+				if (Entry.Id == id)
+				{
+					Entry.Info.UpdateFromComponent(**Fog);
+					break;
+				}
+			}
+		}
+	}
+
+	DirtyFogIds.Reset();
+}
+
+void FScene::AddExponentialHeightFog(UExponentialHeightFogComponent* Fog)
+{
+	if (!Fog) return;
+
+	const uint32 Id = Fog->GetUUID();
+
+	if (FogComponentMap.Contains(Id))
+	{
+		// 이미 등록된 안개 컴포넌트라면 갱신
+		for (FFogSceneEntry& Entry : ExponentialFogs)
+		{
+			if (Entry.Id == Id)
+			{
+				Entry.Info = FExponentialHeightFogSceneInfo(Fog);
+				return;
+			}
+		}
+	}
+	else
+	{
+		FogComponentMap.Add(Id, Fog);
+		ExponentialFogs.Add(FFogSceneEntry{ Id, FExponentialHeightFogSceneInfo(Fog) });
+	}	
+}
+
+void FScene::RemoveExponentialHeightFog(UExponentialHeightFogComponent* Fog)
+{
+	if (!Fog) return;
+
+	const uint32 Id = Fog->GetUUID();
+	FogComponentMap.Remove(Id);
+
+	if(DirtyFogIds.Find(Id) != INDEX_NONE)
+	{
+		DirtyFogIds.RemoveAt(DirtyFogIds.Find(Id), 1);
+	}
+
+	// 이미 등록된 안개 컴포넌트라면 갱신
+	for (int i = 0; i < ExponentialFogs.Num(); i++)
+	{
+		const FFogSceneEntry& Entry = ExponentialFogs[i];
+		if (Entry.Id == Id)
+		{
+			ExponentialFogs.RemoveAt(i, 1);
+			return;
+		}
+	}
+
+}
+
+void FScene::RemoveAllExponentialHeightFogs()
+{
+	ExponentialFogs.Reset();
+	FogComponentMap.Reset();
+	DirtyFogIds.Reset();
+}
+
+

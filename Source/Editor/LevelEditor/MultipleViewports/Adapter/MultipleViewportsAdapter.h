@@ -103,6 +103,10 @@ public:
     // 현재 가로·세로 Split 비율을 반환한다.
     const FSplitRatio& GetSplitRatio() const { return SplitRatio; }
 
+
+    // Todo: Post process
+    FCameraProjection GetRenderProjection(int32 ViewIndex) const;
+
     // 뷰포트 월드 설정
     void SetCurrentWorld(UWorld* InWorld) { CurrentWorld = InWorld; }
     UWorld* GetCurrentWorld() { return CurrentWorld; }

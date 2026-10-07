@@ -58,27 +58,79 @@ FTexture2D::FTexture2D(ID3D11Device* Device, ComPtr<ID3D11Resource> SwapchainTex
 void FTexture2D::CreateViews(ID3D11Device* Device, const D3D11_TEXTURE2D_DESC& InDesc)
 {
 	HRESULT hr;
+
+	// Todo: Post process
+	const bool bReadableDepth = (InDesc.Format == DXGI_FORMAT_R24G8_TYPELESS) ? true : false;
+
+	if (InDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
+	{
+		D3D11_SHADER_RESOURCE_VIEW_DESC DepthSRVDesc{};
+		const D3D11_SHADER_RESOURCE_VIEW_DESC* SRVDesc = nullptr;
+
+		if (bReadableDepth)
+		{
+			DepthSRVDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+			DepthSRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+			DepthSRVDesc.Texture2D.MostDetailedMip = 0;
+			DepthSRVDesc.Texture2D.MipLevels = 1;
+
+			SRVDesc = &DepthSRVDesc;
+		}
+
+		hr = Device->CreateShaderResourceView(Texture.Get(), SRVDesc, SRV.GetAddressOf());
+		if (FAILED(hr))
+			HTR_LOG(Error, "[Texture2D] CreateShaderResourceView failed (hr=0x{:08X})", (uint32)hr);
+	}
+
+	/*
 	if (InDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
 	{
 		hr = Device->CreateShaderResourceView(Texture.Get(), nullptr, SRV.GetAddressOf());
 		if (FAILED(hr))
 			HTR_LOG(Error, "[Texture2D] CreateShaderResourceView failed (hr=0x{:08X})", (uint32)hr);
 	}
+	*/
 
 	if ((InDesc.BindFlags & D3D11_BIND_RENDER_TARGET) &&
 		!(InDesc.MiscFlags & D3D11_RESOURCE_MISC_GENERATE_MIPS))
 	{
 		hr = Device->CreateRenderTargetView(Texture.Get(), nullptr, RTV.GetAddressOf());
 		if (FAILED(hr))
+		{
 			HTR_LOG(Error, "[Texture2D] CreateRenderTargetView failed (hr=0x{:08X})", (uint32)hr);
+		}
 	}
 
+	// Todo: Post process
+	if (InDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL)
+	{
+		D3D11_DEPTH_STENCIL_VIEW_DESC DepthDSVDesc{};
+		const D3D11_DEPTH_STENCIL_VIEW_DESC* DSVDesc = nullptr;
+
+		if (bReadableDepth)
+		{
+			DepthDSVDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			DepthDSVDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+			DepthDSVDesc.Texture2D.MipSlice = 0;
+
+			DSVDesc = &DepthDSVDesc;
+		}
+
+		hr = Device->CreateDepthStencilView(Texture.Get(), DSVDesc, DSV.GetAddressOf());
+		if (FAILED(hr))
+		{
+			HTR_LOG(Error, "[Texture2D] CreateDepthStencilView failed (hr=0x{:08X})", (uint32)hr);
+		}
+	}
+
+	/*
 	if (InDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL)
 	{
 		hr = Device->CreateDepthStencilView(Texture.Get(), nullptr, DSV.GetAddressOf());
 		if (FAILED(hr))
 			HTR_LOG(Error, "[Texture2D] CreateDepthStencilView failed (hr=0x{:08X})", (uint32)hr);
 	}
+	*/
 }
 
 UTexture2D::UTexture2D()

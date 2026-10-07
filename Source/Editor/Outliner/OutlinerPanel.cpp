@@ -146,7 +146,7 @@ void FOutlinerPanel::SelectActor(AActor* Actor)
     UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Actor->GetRootComponent());
 
     if (Callback)
-        Callback(Primitive);
+        Callback(Actor->GetRootComponent());
 }
 
 

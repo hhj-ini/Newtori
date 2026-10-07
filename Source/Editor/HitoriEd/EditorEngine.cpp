@@ -25,6 +25,7 @@
 #include "Render/RenderResourceManager.h"
 
 #include "Render/RenderCommand.h"
+#include "Render/FogRenderer.h"
 #include "Editor/Outliner/OutlinerPanel.h"
 #include "Editor/HitoriEd/EditorFileUtils.h"
 #include "UObject/UObjectIterator.h"
@@ -101,6 +102,9 @@ bool UEditorEngine::Init()
 	GridRenderer = MakeUnique<FGridRenderer>();
 	GridRenderer->Init(Renderer);
 
+	FogRenderer = MakeUnique<FFogRenderer>();
+	FogRenderer->Init(RenderDevice);
+
 	GizmoRenderer = MakeUnique<FGizmoRenderer>();
 	GizmoRenderer->Init(Renderer);
 
@@ -149,11 +153,11 @@ bool UEditorEngine::Init()
 	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(World);
 	OutlinerPanel->SetSelectionCallback(
-		[this](UPrimitiveComponent* Primitive)
+		[this](USceneComponent* Root)
 		{
-			Gizmo->SetTarget(Primitive);
-			Outline->SetTarget(Primitive);
-			DetailsPanel->SetTarget(Primitive);
+			Gizmo->SetTarget(Root);
+			Outline->SetTarget(Cast<UPrimitiveComponent>(Root));
+			DetailsPanel->SetTarget(Root);
 		}
 	);
 
@@ -179,6 +183,11 @@ bool UEditorEngine::Init()
 
 	SkyboxRenderer = MakeUnique<FSkyboxRenderer>();
 	SkyboxRenderer->Init("Assets/SkySphere/Sky.jpg");
+
+
+	// Todo: Post process
+	PostProcessShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/PostProcessTestShader.hlsl");
+	PostProcessConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FPostProcessConstants));
 
 	return true;
 }
@@ -374,168 +383,255 @@ void UEditorEngine::UpdateGizmoAndPicking(UWorld* World)
 // View 행렬로 Scene·Grid·Gizmo·텍스트·Outline을 렌더한다.
 void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
 {
+	const bool bDrawPrimitives = SettingsPanel->GetSettings().bDrawPrimitives;
+	FTexture2D* PostProcessSource = ViewportsPanel->GetSceneColor(ViewIndex);
 	RenderCommand::BeginRenderPass(ViewRenderingInfo);
-
 	UWorld* World = MultipleViewportsAdapter.GetCurrentWorld();
-
-	if (SettingsPanel->GetSettings().bDrawBatchLine)
 	{
-		// 라인 배처는 매 프레임 한 번만 비우고 한 번만 그린다.
-		// 바운딩박스는 그 안에 쌓이는 여러 항목 중 하나일 뿐이다.
-		LineBatcher->BeginFrame();
-
-		if (SettingsPanel->GetSettings().bDrawBoundingBox)
+		if (SettingsPanel->GetSettings().bDrawBatchLine)
 		{
-			LineBatcher->BuildVertexBuffer();
-			World->GetPathTracker().OnRender(LineBatcher.get());
+			// 라인 배처는 매 프레임 한 번만 비우고 한 번만 그린다.
+			// 바운딩박스는 그 안에 쌓이는 여러 항목 중 하나일 뿐이다.
+			LineBatcher->BeginFrame();
+
+			if (SettingsPanel->GetSettings().bDrawBoundingBox)
+			{
+				LineBatcher->BuildVertexBuffer();
+				World->GetPathTracker().OnRender(LineBatcher.get());
+			}
+
+			// 선택된 액터가 라이트면 원뿔을 같이 쌓는다
+			if (Gizmo->GetTarget())
+			{
+				if (ALightActor* LightActor = Cast<ALightActor>(Gizmo->GetTarget()->GetOwner()))
+				{
+					LightActor->GetSpotLightComponent()->DrawDebug(LineBatcher.get());
+				}
+			}
+
+			LineBatcher->OnRender(ViewProjection);
+
 		}
 
-		// 선택된 액터가 라이트면 원뿔을 같이 쌓는다
-		if (Gizmo->GetTarget())
+		// 삼각형 연결은 유지하고 View별 Fill Mode만 선택한다.
+		const ERasterizerState SceneRasterizerState = MultipleViewportsAdapter.IsViewWireframe(ViewIndex)
+			? ERasterizerState::Wireframe : ERasterizerState::SolidBack;
+
+		// 렌더 루프 — 반드시 RenderAll보다 먼저
+		SkyboxRenderer->OnRender(ViewProjection, ViewCameraLocation);
+		if (bDrawPrimitives)
 		{
-			if (ALightActor* LightActor = Cast<ALightActor>(Gizmo->GetTarget()->GetOwner()))
+			RenderCommand::SetRasterizerState(SceneRasterizerState);
+			RenderCommand::SetBlendState(EBlendState::Opaque);
+			RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
+
+			RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
+			Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
+			Renderer->RenderOpaque(ViewProjection);
+
+			// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+			RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
+		}
+		RenderCommand::EndRenderPass(ViewRenderingInfo);
+
+		if (bDrawPrimitives && FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+		{
+			const auto& Fogs = World->GetScene().ExponentialFogs;
+			if (!Fogs.IsEmpty())
 			{
-				LightActor->GetSpotLightComponent()->DrawDebug(LineBatcher.get());
+				const auto& FogInfo = Fogs[0].Info;
+				FHeightFogConstants Constants{};
+				Constants.FogInscatteringColor = FogInfo.FogInscatteringColor;
+				Constants.FogHeight = FogInfo.FogHeight;
+				Constants.FogDensity = FogInfo.FogDensity;
+				Constants.FogHeightFalloff = FogInfo.FogHeightFalloff;
+				Constants.StartDistance = FogInfo.StartDistance;
+				Constants.FogCutoffDistance = FogInfo.FogCutoffDistance;
+				Constants.FogMaxOpacity = FogInfo.FogMaxOpacity;
+
+				const FRenderingInfo& FogPass = ViewportsPanel->GetFogRenderingInfo(ViewIndex);
+				RenderCommand::BeginRenderPass(FogPass);
+				const bool bFogDrawn = FogRenderer->OnRender(
+					PostProcessSource,
+					ViewRenderingInfo.DepthStencil.Texture,
+					ViewProjection,
+					ViewCameraLocation,
+					Constants);
+				RenderCommand::EndRenderPass(FogPass);
+				if (bFogDrawn)
+					PostProcessSource = ViewportsPanel->GetFogColor(ViewIndex);
 			}
 		}
 
-		LineBatcher->OnRender(ViewProjection);
+		// FogColor 또는 SceneColor에서 색 렌더링을 이어가며 기존 깊이를 유지한다.
+		FRenderingInfo ContinuationInfo{};
+		ContinuationInfo.ViewportSetting = ViewRenderingInfo.ViewportSetting;
+		FRenderingDesc ContinuationColor = ViewRenderingInfo.ColorRenderTargets[0];
+		ContinuationColor.Texture = PostProcessSource;
+		ContinuationColor.LoadOp = ERenderTargetLoadOp::Load;
+		ContinuationInfo.ColorRenderTargets.Add(ContinuationColor);
+		ContinuationInfo.DepthStencil = ViewRenderingInfo.DepthStencil;
+		ContinuationInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+		RenderCommand::BeginRenderPass(ContinuationInfo);
 
-	}
-
-	const bool bDrawPrimitives = SettingsPanel->GetSettings().bDrawPrimitives;
-	// 삼각형 연결은 유지하고 View별 Fill Mode만 선택한다.
-	const ERasterizerState SceneRasterizerState = MultipleViewportsAdapter.IsViewWireframe(ViewIndex)
-		? ERasterizerState::Wireframe : ERasterizerState::SolidBack;
-
-	// 렌더 루프 — 반드시 RenderAll보다 먼저
-	SkyboxRenderer->OnRender(ViewProjection, ViewCameraLocation);
-	if (bDrawPrimitives)
-	{
-		RenderCommand::SetRasterizerState(SceneRasterizerState);
-		RenderCommand::SetBlendState(EBlendState::Opaque);
-		RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
-
-		RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
-		Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
-		Renderer->RenderOpaque(ViewProjection);
-		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
-		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
-	}
-
-	if (SettingsPanel->GetSettings().bDrawBatchLine)
-	{
-		const EGridPlane GridPlane = MultipleViewportsAdapter.GetGridPlane(ViewIndex);
-
-		if (SettingsPanel->GetSettings().bDrawPSGrid && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+		if (SettingsPanel->GetSettings().bDrawBatchLine)
 		{
-			GridRenderer->OnRenderPSGrid(
-				ViewProjection, ViewCameraLocation, SettingsPanel->GetSettings(), ViewRenderingInfo.ViewportSetting
+			const EGridPlane GridPlane = MultipleViewportsAdapter.GetGridPlane(ViewIndex);
+
+			if (SettingsPanel->GetSettings().bDrawPSGrid && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+			{
+				GridRenderer->OnRenderPSGrid(
+					ViewProjection, ViewCameraLocation, SettingsPanel->GetSettings(), ViewRenderingInfo.ViewportSetting
+				);
+			}
+			else
+			{
+				GridRenderer->OnRenderBatchGrid(
+					ViewProjection,
+					ViewCameraLocation,
+					ViewCameraForward,
+					GridPlane,
+					static_cast<float>(SettingsPanel->GetSettings().GridSpacing),
+					!MultipleViewportsAdapter.IsOrthographic(ViewIndex) ||
+					MultipleViewportsAdapter.GetCameraPreset(ViewIndex) == EMultipleViewportsCameraPreset::OrthographicView,
+					ViewRenderingInfo.ViewportSetting
+				);
+			}
+		}
+
+		if (bDrawPrimitives)
+		{
+			// Grid 파이프라인이 바꾼 상태를 장면 기준으로 되돌린 뒤 반투명을 먼 것부터 그린다.
+			RenderCommand::SetRasterizerState(SceneRasterizerState);
+			RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			Renderer->RenderTranslucent(ViewProjection);
+			RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
+		}
+
+		// TextRenderComponent 렌더링
+		for (TObjectIterator<UTextRenderComponent> TextComponent; TextComponent; ++TextComponent)
+		{
+			if (!TextComponent || !TextComponent->GetFont() || !TextComponent->IsVisible())
+			{
+				continue;
+			}
+
+			TextRenderer->OnRender(
+				TextComponent->GetText(),
+				TextComponent->GetWorldMatrix(),
+				TextComponent->GetTextSize(),
+				*TextComponent->GetFont(),
+				ViewProjection
 			);
 		}
-		else
+		RenderCommand::EndRenderPass(ContinuationInfo);
+	}
+
+	// Todo: Post process
+	const FRenderingInfo& PostProcessInfo = ViewportsPanel->GetPostProcessRenderingInfo(ViewIndex);
+	RenderCommand::BeginRenderPass(PostProcessInfo);
+	{
+		FPipelineState Pipeline{};
+		Pipeline.Shader = PostProcessShader;
+		Pipeline.Topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		Pipeline.RasterizerState = ERasterizerState::SolidNone;
+		Pipeline.DepthStencilState = EDepthStencilState::Disabled;
+
+		RenderCommand::BindPipelineState(Pipeline);
+
+		// 실제 장면 렌더링에 사용한 투영 정보를 가져온다.
+		const FCameraProjection Projection = MultipleViewportsAdapter.GetRenderProjection(ViewIndex);
+
+		FPostProcessConstants PostProcessData{};
+		PostProcessData.DisplayMode = static_cast<uint32>(ViewportsPanel->GetDisplayMode(ViewIndex));
+		PostProcessData.NearClip = Projection.NearClip;
+		PostProcessData.FarClip = Projection.FarClip;
+		PostProcessData.IsOrthographic = (Projection.Mode == EProjectionMode::Orthographic) ? 1U : 0U;
+
+		RenderCommand::UpdateBufferData(PostProcessConstantBuffer.get(), &PostProcessData, sizeof(PostProcessData));
+
+		// 픽셀 셰이더의 b0에 연결한다.
+		RenderCommand::BindConstantBuffer(0, PostProcessConstantBuffer.get(), EShaderBindFlagBits::Pixel);
+		RenderCommand::BindShaderResource(0, PostProcessSource, EShaderBindFlagBits::Pixel);
+		RenderCommand::BindShaderResource(1, ViewRenderingInfo.DepthStencil.Texture, EShaderBindFlagBits::Pixel);
+
+		RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Pixel);
+		RenderCommand::Draw(3);
+
+		// 이후 오버레이에서 Depth를 DSV로 쓰기 전에 해제한다.
+		ID3D11ShaderResourceView* NullSRVs[2] = { nullptr, nullptr };
+		RenderCommand::GetContext()->PSSetShaderResources(0, 2, NullSRVs);
+	}
+	RenderCommand::EndRenderPass(PostProcessInfo);
+
+	FRenderingInfo OverlayInfo{};
+	OverlayInfo.ViewportSetting = PostProcessInfo.ViewportSetting;
+	
+	FRenderingDesc OverlayColor = PostProcessInfo.ColorRenderTargets[0];
+	OverlayColor.LoadOp = ERenderTargetLoadOp::Load;
+	OverlayInfo.ColorRenderTargets.Add(OverlayColor);
+
+	OverlayInfo.DepthStencil = ViewRenderingInfo.DepthStencil;
+	OverlayInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+
+	RenderCommand::BeginRenderPass(OverlayInfo);
+	{
+		// 스텐실 기반이라 선택 대상의 가시성이 꺼져 있어도 외곽선만 그린다.
+		if (Outline->GetTarget() && !bIsPlaying)
 		{
-			GridRenderer->OnRenderBatchGrid(
+			OutlineRenderer->OnRender(*Outline, ViewProjection, ViewRenderingInfo.ViewportSetting);
+		}
+
+		if (Gizmo->GetTarget() && !bIsPlaying)
+		{
+			RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
+
+			GizmoRenderer->OnRender(
+				*Gizmo,
 				ViewProjection,
 				ViewCameraLocation,
-				ViewCameraForward,
-				GridPlane,
-				static_cast<float>(SettingsPanel->GetSettings().GridSpacing),
-				!MultipleViewportsAdapter.IsOrthographic(ViewIndex) ||
-				MultipleViewportsAdapter.GetCameraPreset(ViewIndex) == EMultipleViewportsCameraPreset::OrthographicView,
-				ViewRenderingInfo.ViewportSetting
-			);
+				MultipleViewportsAdapter.IsOrthographic(ViewIndex));
 		}
-	}
-
-	if (bDrawPrimitives)
-	{
-		// Grid 파이프라인이 바꾼 상태를 장면 기준으로 되돌린 뒤 반투명을 먼 것부터 그린다.
-		RenderCommand::SetRasterizerState(SceneRasterizerState);
-		RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		Renderer->RenderTranslucent(ViewProjection);
-		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
-	}
-
-	// TextRenderComponent 렌더링
-	for (TObjectIterator<UTextRenderComponent> TextComponent; TextComponent; ++TextComponent)
-	{
-		if (!TextComponent || !TextComponent->GetFont() || !TextComponent->IsVisible())
-		{
-			continue;
-		}
-
-		TextRenderer->OnRender(
-			TextComponent->GetText(),
-			TextComponent->GetWorldMatrix(),
-			TextComponent->GetTextSize(),
-			*TextComponent->GetFont(),
-			ViewProjection
-		);
-	}
-
-	// 스텐실 기반이라 선택 대상의 가시성이 꺼져 있어도 외곽선만 그린다.
-	if (Outline->GetTarget() && !bIsPlaying)
-	{
-		OutlineRenderer->OnRender(*Outline, ViewProjection, ViewRenderingInfo.ViewportSetting);
-	}
-
-	if (Gizmo->GetTarget() && !bIsPlaying)
-	{
-		auto Target = Cast<UPrimitiveComponent>(Gizmo->GetTarget());
-
-		FBox box = Target->CalcBounds();
 
 		RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
 
-		GizmoRenderer->OnRender(
-			*Gizmo,
-			ViewProjection,
-			ViewCameraLocation,
-			MultipleViewportsAdapter.IsOrthographic(ViewIndex));
-	}
-
-	RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
-
-	if (SettingsPanel->GetSettings().bShowUUID)
-	{
-		for (AActor* Actor : World->GetPersistentLevel()->GetActors())
+		if (SettingsPanel->GetSettings().bShowUUID)
 		{
-			if (!Actor)
-				continue;
+			for (AActor* Actor : World->GetPersistentLevel()->GetActors())
+			{
+				if (!Actor)
+					continue;
 
-			UPrimitiveComponent* Primitive =
-				Cast<UPrimitiveComponent>(Actor->GetRootComponent());
+				UPrimitiveComponent* Primitive =
+					Cast<UPrimitiveComponent>(Actor->GetRootComponent());
 
-			if (!Primitive)
-				continue;
+				if (!Primitive)
+					continue;
 
-			FBox Box =
-				Primitive->CalcBounds();
+				FBox Box =
+					Primitive->CalcBounds();
 
-			FVector UUIDLocation;
-			UUIDLocation.X = (Box.Min.X + Box.Max.X) * 0.5f;
-			UUIDLocation.Y = (Box.Min.Y + Box.Max.Y) * 0.5f;
-			UUIDLocation.Z = Box.Max.Z + 0.5f;
+				FVector UUIDLocation;
+				UUIDLocation.X = (Box.Min.X + Box.Max.X) * 0.5f;
+				UUIDLocation.Y = (Box.Min.Y + Box.Max.Y) * 0.5f;
+				UUIDLocation.Z = Box.Max.Z + 0.5f;
 
-			FString Text =
-				"UUID : " + std::to_string(Actor->GetUUID());
+				FString Text =
+					"UUID : " + std::to_string(Actor->GetUUID());
 
-			TextRenderer->BuildTextMesh(
-				Text,
-				0.5f,
-				*SystemFont
-			);
+				TextRenderer->BuildTextMesh(
+					Text,
+					0.5f,
+					*SystemFont
+				);
 
-			const FMatrix BillboardWorld = MultipleViewportsAdapter.BuildEngineBillboardMatrix(ViewIndex, UUIDLocation, 1.0f, 1.0f);
-			TextRenderer->OnRender(Text, BillboardWorld, 0.5f, *SystemFont, ViewProjection);
+				const FMatrix BillboardWorld = MultipleViewportsAdapter.BuildEngineBillboardMatrix(ViewIndex, UUIDLocation, 1.0f, 1.0f);
+				TextRenderer->OnRender(Text, BillboardWorld, 0.5f, *SystemFont, ViewProjection);
+			}
 		}
 	}
-
-
-
-	RenderCommand::EndRenderPass(ViewRenderingInfo);
+	RenderCommand::EndRenderPass(OverlayInfo);
 }
 
 
@@ -561,6 +657,10 @@ void UEditorEngine::PresentFrame()
 // ImGui를 정리한다. UObject 일괄 삭제와 공용 자원·Device 정리는 FEngineLoop가 이어서 한다.
 void UEditorEngine::PreExit()
 {
+	// Todo: Post process
+	PostProcessConstantBuffer.reset();
+	//
+
 	ImGuiRenderer->Shutdown();
 }
 
@@ -679,3 +779,4 @@ void UEditorEngine::SaveSceneAs()
 
 	FEditorFileUtils::SaveSceneAs(World);
 }
+ 
