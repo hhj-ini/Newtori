@@ -2,6 +2,7 @@
 #include "Component/SceneComponent.h"
 
 #include "GameFramework/Actor.h"
+#include "ObjectSystem/Property.h"
 
 USceneComponent::~USceneComponent()
 {
@@ -100,6 +101,16 @@ FMatrix USceneComponent::GetWorldMatrix() const
 	}
 
 	return LocalMatrix;
+}
+
+void USceneComponent::OnPropertyChanged(const FProperty& Property)
+{
+	Super::OnPropertyChanged(Property);
+
+	if (Property.Name == "Transform")
+	{
+		MarkTransformDirty();
+	}
 }
 
 void USceneComponent::MarkTransformDirty()
