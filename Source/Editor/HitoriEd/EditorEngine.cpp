@@ -83,6 +83,9 @@ bool UEditorEngine::Init()
 	EditorUI->SetSaveSceneCallback([this]() { SaveCurrentScene(); });
 	EditorUI->SetSaveSceneAsCallback([this]() { SaveSceneAs(); });
 
+	EditorUI->SetStartPIECallback([this]() {StartPIE();});
+	EditorUI->SetEndPIECallback([this]() {EndPIE();});
+
 	OutputLogPanel = EditorUI->AddEditorPanel<FOutputLogPanel>();
 	FLog::AddSink(OutputLogPanel);
 	HTR_LOG(Info, "Editor Initialize...");
@@ -263,12 +266,13 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 			continue;
 		}
 		// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
+
 		{
 			SCOPE_CYCLE_COUNTER(STAT_WorldTick);
 			World->Tick(DeltaTime);
 		}
 
-		if (EWorldType::Editor == WorldList[i].get()->WorldType)
+		if (!bIsPlaying)
 		{
 			UpdateGizmoAndPicking(World);
 		}
@@ -472,12 +476,12 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 	}
 
 	// 스텐실 기반이라 선택 대상의 가시성이 꺼져 있어도 외곽선만 그린다.
-	if (Outline->GetTarget())
+	if (Outline->GetTarget() && !bIsPlaying)
 	{
 		OutlineRenderer->OnRender(*Outline, ViewProjection, ViewRenderingInfo.ViewportSetting);
 	}
 
-	if (Gizmo->GetTarget())
+	if (Gizmo->GetTarget() && !bIsPlaying)
 	{
 		auto Target = Cast<UPrimitiveComponent>(Gizmo->GetTarget());
 
@@ -573,6 +577,7 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 
 void UEditorEngine::StartPIE()
 {
+	bIsPlaying = true;
 	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
 	if (!EditorWorld)
 	{
@@ -593,6 +598,7 @@ void UEditorEngine::StartPIE()
 
 void UEditorEngine::EndPIE()
 {
+	bIsPlaying = false;
 	FWorldContext* PIEContext = GetWorldContext(EWorldType::PIE);
 	if (!PIEContext)
 	{

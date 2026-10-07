@@ -211,6 +211,7 @@ AActor* FObjectDuplicator::DuplicateActorToWorld(const AActor* SourceActor, UWor
             UActorComponent** DestComp = ComponentMap.Find(SourceComp);
             if (DestComp)
             {
+                assert(SourceComp != *DestComp);
                 CopyProperties(SourceComp, *DestComp, SourceComp->GetClass());
             }
         }
