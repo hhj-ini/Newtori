@@ -1,17 +1,11 @@
 #include "EnginePCH.h"
 #include "ObjectDuplication.h"
-
+#include "Property.h"
+#include "Class.h"
+#include "ObjectFactory.h"
 #include "GameFramework/Actor.h"
-#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/Level.h"
-#include "Component/ActorComponent.h"
-#include "Component/SceneComponent.h"
-#include "ObjectSystem/ObjectFactory.h"
-#include "ObjectSystem/Class.h"
-#include "Property.h"
-#include "Asset/RenderAsset.h"
-#include "Math/Transform.h"
 
 namespace
 {
@@ -217,6 +211,7 @@ AActor* FObjectDuplicator::DuplicateActorToWorld(const AActor* SourceActor, UWor
             UActorComponent** DestComp = ComponentMap.Find(SourceComp);
             if (DestComp)
             {
+                assert(SourceComp != *DestComp);
                 CopyProperties(SourceComp, *DestComp, SourceComp->GetClass());
             }
         }
@@ -225,13 +220,14 @@ AActor* FObjectDuplicator::DuplicateActorToWorld(const AActor* SourceActor, UWor
     return DestActor;
 }
 
-UWorld* FObjectDuplicator::DuplicateWorld(const UWorld* SourceWorld)
+UWorld* FObjectDuplicator::DuplicateWorld(const UWorld* SourceWorld, EWorldType InType)
 {
     if (!SourceWorld) return nullptr;
 
+
     // 새 World를 초기화한 뒤 SourceWorld의 Level Actor들을 새 World에 각각 복제한다.
     UWorld* DestWorld = FObjectFactory::ConstructObject<UWorld>();
-    if (!DestWorld || !DestWorld->Init(EWorldType::PIE))
+    if (!DestWorld || !DestWorld->Init(InType))
     {
         delete DestWorld;
         return nullptr;
