@@ -8,12 +8,34 @@
 #include "RenderingInfo.h"
 #include "Occlusion/GPUOcclusion.h"
 
+class FScene;
+
+struct alignas(16) FPointLightConstants
+{
+	FVector Position;          // 12바이트
+	float AttenuationRadius;   //  4바이트
+
+	FVector4 Color;             // 16바이트
+	float Intensity;           //  4바이트
+	float padding[3];            // 12바이트
+};
+
 constexpr uint32 ObjectSlotBytes = 256;
 
 struct FPerObjectConstants
 {
 	FMatrix World;
+	FMatrix InverseTransposeWorld;
 };
+
+// 비균등 스케일에 대응되는 normal 변환을 위해 World의 역행렬 전치 행렬
+inline FPerObjectConstants MakePerObjectConstants(const FMatrix& World)
+{
+	FPerObjectConstants Constants;
+	Constants.World = World;
+	Constants.InverseTransposeWorld = World.Inverse().GetTransposed();
+	return Constants;
+}
 
 struct FSortEntry
 {
@@ -72,6 +94,8 @@ public:
 	// GPU 결과를 기다리므로 매우 느리다. 버튼 등으로 한 프레임만 실행할 것.
 	FOcclusionMeasureResult MeasureOpaqueOcclusion(const FMatrix& ViewProjection);
 
+	void UpdatePointLight(const FScene& Scene);
+
 	uint8* BeginObjectConstants(uint32 MaxSlots);
 	void EndObjectConstants();
 
@@ -83,6 +107,7 @@ private:
 	uint32 FirstMaterialIndex = 0;
 	TUniquePtr<FConstantBuffer> PerObjectCB;
 	TUniquePtr<FConstantBuffer> ViewCB;
+	TUniquePtr<FConstantBuffer> PointLightCB;
 
 	// 모든 패킷의 World 행렬을 256바이트 칸에 한 번에 올린 버퍼. D3D11.1 오프셋 바인딩을 못 쓰면 PerObjectCB로 돌아간다.
 	TUniquePtr<FConstantBuffer> PerObjectSlotCB;

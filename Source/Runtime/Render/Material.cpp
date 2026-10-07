@@ -49,6 +49,7 @@ UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 	Instance->BaseColor = Source->BaseColor;
 	Instance->bIsInstance = true;
 	Instance->Parent = Source;
+	Instance->bUnlit = Source->bUnlit;
 
 	return Instance;
 }
@@ -86,7 +87,7 @@ json UMaterial::SaveMaterial(const UMaterial* Material)
 	};
 	Out["SamplerState"] = Material->SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Out["BlendState"] = Material->BlendState == EBlendState::AlphaBlend ? "AlphaBlend" : "Opaque";
-
+	Out["Unlit"] = Material->bUnlit;
 	json Textures = json::array();
 	for (UTexture2D* Texture : Material->Textures)
 	{
@@ -126,6 +127,11 @@ UMaterial* UMaterial::LoadMaterial(const json& In)
 	if (In.contains("BaseColor"))
 	{
 		In["BaseColor"].get_to(Instance->BaseColor);
+	}
+
+	if (In.contains("Unlit"))
+	{
+		In["Unlit"].get_to(Instance->bUnlit);
 	}
 
 	if (In.contains("Textures"))

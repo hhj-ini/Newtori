@@ -7,6 +7,7 @@
 #include "Core/Stats/LightweightStats.h"
 
 #include "Engine/PrimitiveSceneProxy.h"
+#include "Engine/Scene.h"
 
 #include "RenderCommand.h"
 
@@ -62,6 +63,9 @@ bool FRenderer::Init()
 	bUsePerObjectSlots = RenderCommand::SupportsConstantBufferOffsets();
 	PerObjectCB = RenderCommand::CreateConstantBuffer(sizeof(FPerObjectConstants));
 	ViewCB = RenderCommand::CreateConstantBuffer(sizeof(FMatrix));
+	PointLightCB = RenderCommand::CreateConstantBuffer(sizeof(FPointLightConstants));
+
+	if (!PointLightCB || !PointLightCB->GetBuffer()) return false;
 
 	GPUOcclusion.Init();   // 실패해도 오클루전만 못 쓸 뿐 렌더링은 된다
 
@@ -117,7 +121,8 @@ void FRenderer::UploadPerObjectConstants()
 	{
 		FRenderPacket& P = RenderPackets[Index];
 		const FMatrix& Model = GetPacketWorld(P);
-		std::memcpy(Dest + static_cast<size_t>(Index) * ObjectSlotBytes, &Model, sizeof(FMatrix));
+		FPerObjectConstants Constants = MakePerObjectConstants(Model);
+		std::memcpy(Dest + static_cast<size_t>(Index) * ObjectSlotBytes, &Constants, sizeof(Constants));
 		P.Slot = Index;
 	}
 
@@ -432,6 +437,37 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 	return Result;
 }
 
+void FRenderer::UpdatePointLight(const FScene& Scene)
+{
+	FPointLightConstants Constants{};
+
+	for (const FLightSceneEntry& Entry : Scene.Lights)
+	{
+		if (!Entry.Proxy) continue;
+
+		const FLightSceneProxy& Proxy = *Entry.Proxy;
+
+		if (Proxy.LightType != ELightType::Point ||
+			Proxy.AttenuationRadius <= 0.0f ||
+			Proxy.Intensity <= 0.0f)
+		{
+			continue;
+		}
+
+		Constants.Position = Proxy.Position;
+		Constants.AttenuationRadius = Proxy.AttenuationRadius;
+		Constants.Intensity = Proxy.Intensity;
+		Constants.Color = FVector4(Proxy.LightColor.X, Proxy.LightColor.Y, Proxy.LightColor.Z, Proxy.LightColor.W);
+
+		break;
+	}
+
+	// 라이트가 없어도 0을 업로드하여 이전 값이 남지 않게 한다.
+	RenderCommand::UpdateBufferData(PointLightCB.get(), &Constants, sizeof(Constants));
+
+	RenderCommand::BindConstantBuffer( 3, PointLightCB.get(), EShaderBindFlagBits::Pixel);
+}
+
 uint8* FRenderer::BeginObjectConstants(uint32 MaxSlots)
 {
 	bObjectConstantsPrepared = false;
@@ -474,7 +510,7 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 	{
 	case EMaterialParamLayout::StaticMesh:
 	{
-		break; // 라이팅 적용 시 제거
+		//break; // 라이팅 적용 시 제거
 
 		const float TotalTime = EngineTimer::GetTotalTime();
 
@@ -482,6 +518,7 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 		Params.BaseColor = RenderPacket.Material->BaseColor;
 		Params.UVOffset = RenderPacket.Material->UVScrollSpeed * TotalTime;
 		Params.bOpaque = RenderPacket.Material->BlendState == EBlendState::Opaque ? 1.0f : 0.0f;
+		Params.bUnlit = RenderPacket.Material->bUnlit ? 1.0f : 0.0f;
 
 		RenderCommand::UpdateBufferData(RenderPacket.Material->ParamBuffer.get(), &Params, sizeof(FStaticMeshMaterialParams));
 		RenderCommand::BindConstantBuffer(1, RenderPacket.Material->ParamBuffer.get(), EShaderBindFlagBits::Pixel);
@@ -517,6 +554,7 @@ void FRenderer::UpdatePerObjectConstants(const FMatrix& World)
 	FPerObjectConstants Constants;
 
 	Constants.World = World;
+	Constants.InverseTransposeWorld = World.GetTransposed().Inverse();
 
 	RenderCommand::UpdateBufferData(PerObjectCB.get(), &Constants);
 }

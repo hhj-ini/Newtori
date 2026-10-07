@@ -8,11 +8,19 @@
 #include "Math/BVH.h"
 #include "Render/ExponentialHeightFogSceneInfo.h"
 #include "Container/Map.h"
+#include <Component/LightComponent.h>
+#include "Engine/LightSceneProxy.h"
 
 struct FFogSceneEntry
 {
 	uint32 Id;
 	FExponentialHeightFogSceneInfo Info;
+};
+
+struct FLightSceneEntry
+{
+	uint32 Id;
+	TUniquePtr<FLightSceneProxy> Proxy;
 };
 
 class FScene
@@ -30,7 +38,9 @@ public:
 	void MarkDirty(FPrimitiveSceneProxy* Proxy);
 	void MarkRenderStateDirty(FPrimitiveSceneProxy* Proxy);
 	void MarkFogDirty(uint32 ComponentId);
+	void MarkLightDirty(uint32 ComponentId);
 	void UpdateDirtyFogs();	
+	void UpdateDirtyLights();
 
 
 	TArray<FPrimitiveSceneProxy*> Proxies;
@@ -50,12 +60,19 @@ public:
 	bool bElementListChanged = false;
 
 	TArray<FFogSceneEntry> ExponentialFogs;
+	TArray<FLightSceneEntry> Lights;
 
 	void AddExponentialHeightFog(UExponentialHeightFogComponent* Fog);
 	void RemoveExponentialHeightFog(UExponentialHeightFogComponent* Fog);
 	void RemoveAllExponentialHeightFogs();
 
+	void AddLight(ULightComponent* Light);
+	void RemoveLight(ULightComponent* Light);
+	void RemoveAllLights();
+
 private:
 	TMap<uint32, UExponentialHeightFogComponent*> FogComponentMap;
+	TMap<uint32, ULightComponent*> LightComponentMap;
 	TArray<uint32> DirtyFogIds;
+	TArray<uint32> DirtyLightIds;
 };
