@@ -3,6 +3,8 @@
 #include <iostream>
 #include "../Core/Types.h"
 
+struct FQuat;
+
 struct FVector {
 
 	union
@@ -46,6 +48,8 @@ public:
 	static const FVector OneVector;     // (1, 1, 1)
 
 	bool IsZero() const;
+
+	FQuat ToOrientationQuat() const;
 
 	// float GetMax();
 	//// float GetMin();

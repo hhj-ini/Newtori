@@ -10,7 +10,7 @@ class UMovementComponent : public UActorComponent
 
 public:
 	UMovementComponent() {}
-	virtual ~UMovementComponent() override;
+	virtual ~UMovementComponent() override = default;
 
 	virtual void BeginPlay() {};
 	virtual void TickComponent(float DeltaTime) {};
@@ -22,7 +22,7 @@ protected:
 	virtual void OnRegister() override;
 	virtual void OnUnregister() override;
 
-	void MoveUpdateComponent(const FVector& NewLocation, const FQuat& NewRotation);
+	void MoveUpdateComponent(const FVector& DeltaLocation, const FQuat& NewRotation);
 
 	FVector Velocity;
 	

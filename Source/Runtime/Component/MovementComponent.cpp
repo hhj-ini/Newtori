@@ -24,11 +24,11 @@ void UMovementComponent::SetUpdatedComponent(USceneComponent* NewUpdatedComponen
 	UpdatedComponent = NewUpdatedComponent;
 }
 
-void UMovementComponent::MoveUpdateComponent(const FVector& NewLocation, const FQuat& NewRotation)
+void UMovementComponent::MoveUpdateComponent(const FVector& DeltaLocation, const FQuat& NewRotation)
 {
 	if (UpdatedComponent)
 	{
-		UpdatedComponent->SetRelativeLocation(NewLocation);
+		UpdatedComponent->SetRelativeLocation(DeltaLocation + UpdatedComponent->GetRelativeLocation());
 		UpdatedComponent->SetRelativeRotationFromQuat(NewRotation);
 	}
 }
