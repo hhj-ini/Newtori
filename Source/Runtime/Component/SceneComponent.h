@@ -62,6 +62,7 @@ public:
 	FVector GetWorldScale3D() const;
 	FMatrix GetWorldMatrix() const;
 
+	void OnPropertyChanged(const FProperty& Property) override;
 	void MarkTransformDirty();
 	virtual void OnTransformDirty() {};
 

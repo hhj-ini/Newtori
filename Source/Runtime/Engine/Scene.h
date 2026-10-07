@@ -3,8 +3,17 @@
 #include "PrimitiveSceneProxy.h"
 #include "Component/BillboardComponent.h"
 #include "Component/PrimitiveComponent.h"
+#include "Component/ExponentialHeightFogComponent.h"
 #include "Math/Frustum.h"
 #include "Math/BVH.h"
+#include "Render/ExponentialHeightFogSceneInfo.h"
+#include "Container/Map.h"
+
+struct FFogSceneEntry
+{
+	uint32 Id;
+	FExponentialHeightFogSceneInfo Info;
+};
 
 class FScene
 {
@@ -20,6 +29,8 @@ public:
 
 	void MarkDirty(FPrimitiveSceneProxy* Proxy);
 	void MarkRenderStateDirty(FPrimitiveSceneProxy* Proxy);
+	void MarkFogDirty(uint32 ComponentId);
+	void UpdateDirtyFogs();	
 
 
 	TArray<FPrimitiveSceneProxy*> Proxies;
@@ -38,5 +49,13 @@ public:
 	};
 	bool bElementListChanged = false;
 
+	TArray<FFogSceneEntry> ExponentialFogs;
 
+	void AddExponentialHeightFog(UExponentialHeightFogComponent* Fog);
+	void RemoveExponentialHeightFog(UExponentialHeightFogComponent* Fog);
+	void RemoveAllExponentialHeightFogs();
+
+private:
+	TMap<uint32, UExponentialHeightFogComponent*> FogComponentMap;
+	TArray<uint32> DirtyFogIds;
 };

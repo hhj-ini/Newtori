@@ -181,7 +181,10 @@ void UBenchmarkEngine::InitEditorTools()
 	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(World);
 	OutlinerPanel->SetSelectionCallback(
-		[this](UPrimitiveComponent* Primitive) { SelectPrimitive(Primitive); });
+		[this](USceneComponent* Root) { 
+			Gizmo->SetTarget(Root);
+			Outline->SetTarget(Cast<UPrimitiveComponent>(Root));
+			DetailsPanel->SetTarget(Root); });
 	OutlinerPanel->SetDeleteActorCallback(
 		[this, World](AActor* Actor)
 		{
