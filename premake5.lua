@@ -159,6 +159,8 @@ project "HitoriEditor"
 	kind     "WindowedApp"
 	CommonSettings()
 
+	targetname "GWJNS"
+	
 	pchheader "EnginePCH.h"
 	pchsource "Source/Editor/EditorPCH.cpp"
 
