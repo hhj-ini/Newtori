@@ -20,7 +20,13 @@ class UBillboardComponent;
 
 struct FLODViewContext;
 
-enum class EWorldType;
+enum class EWorldType
+{
+	Editor,
+	EditorPreview,
+	PIE,
+	Game,
+};
 
 struct FRenderStats
 {
@@ -93,6 +99,8 @@ public:
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
 
 	const FRenderStats& GetRenderStats() const { return RenderStats; }
+
+	EWorldType GetWorldType() { return WorldType; }
 
 private:
 	struct alignas(64) FGatherChunk
