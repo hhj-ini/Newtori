@@ -118,6 +118,19 @@ FRotator USceneComponent::GetWorldRotation() const
 	return Transform.Rotation;
 }
 
+void USceneComponent::SetWorldLocation(const FVector& InLocation)
+{
+	const FVector Local = AttachParent ? AttachParent->GetWorldMatrix().Inverse().TransformPosition(InLocation) : InLocation;
+	SetRelativeLocation(Local);
+}
+
+void USceneComponent::SetWorldRotation(const FRotator& InRotation)
+{
+	const FQuat WorldRotation = InRotation.Quaternion();
+	const FQuat Local = AttachParent ? AttachParent->GetWorldRotation().Quaternion().Inverse() * WorldRotation : WorldRotation;
+	SetRelativeRotation(Local.ToFRotator());
+}
+
 FVector USceneComponent::GetWorldLocation() const
 {
 	FMatrix WorldMatrix = GetWorldMatrix();

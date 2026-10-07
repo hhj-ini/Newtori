@@ -33,6 +33,8 @@ public:
     void MarkLightDirty();
 
 protected:
+	void OnRegister() override;
+	void OnUnregister() override;
     virtual void ClampLightValues();
 
 private:

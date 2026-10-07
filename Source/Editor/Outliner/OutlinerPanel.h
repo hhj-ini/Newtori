@@ -11,7 +11,7 @@ class UActorComponent;
 class UPrimitiveComponent;
 class USceneComponent;
 
-using SelectionCallback = std::function<void(USceneComponent*)>;
+using SelectionCallback = std::function<void(AActor*)>;
 using DeleteActorCallback = std::function<void(AActor*)>;
 
 class FOutlinerPanel : public IEditorPanel
@@ -29,7 +29,8 @@ public:
     void OnRender() override;
     const char* GetPanelName() const override { return "Outliner"; }
 
-    void SetWorld(UWorld* InWorld) { World = InWorld; };
+    void SetWorld(UWorld* InWorld);
+    UWorld* GetWorld() const { return World; }
 
     void DrawActors(ULevel* Level);
     void DrawActorNode(AActor* Actor);
@@ -40,7 +41,7 @@ public:
 
 private:
     UWorld* World = nullptr;
-    UObject* SelectedObject = nullptr;
+    AActor* SelectedObject = nullptr;
 
     SelectionCallback Callback;
     DeleteActorCallback DeleteCallback;

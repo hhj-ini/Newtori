@@ -132,6 +132,12 @@ public:
     FCameraProjection GetRenderProjection(int32 ViewIndex) const;
 
     // PIE 월드 설정
+	// World 소멸 전에 캡처의 Component 참조를 버린다.
+	void ForgetWorld(UWorld* InWorld)
+	{
+		CaptureWorlds.Remove(InWorld);
+		LastPick = {};
+	}
     void SetViewportWorld(UINT Index, UWorld* InWorld) { Worlds[Index] = InWorld; }
     UWorld* GetViewportWorld(UINT Index) { return Worlds[Index]; }
     TArray<UWorld*>& GetViewportWorlds() { return Worlds; }

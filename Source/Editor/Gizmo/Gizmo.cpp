@@ -222,7 +222,7 @@ void FGizmo::UpdateDrag(const FRay& MouseRay, const FVector2& MousePos)
 	if (DraggingAxis == AXIS_SCREEN && Mode != EGizmoMode::Rotation)
 	{
 		if (Mode == EGizmoMode::Location)
-			Target->SetRelativeLocation(DragStartLocation + (current - DragStartPoint));
+			Target->SetWorldLocation(DragStartLocation + (current - DragStartPoint));
 		else
 		{
 			float dx = MousePos.X - DragStartMousePos.X;
@@ -247,7 +247,7 @@ void FGizmo::UpdateDrag(const FRay& MouseRay, const FVector2& MousePos)
 
 		FQuat result = delta * start;
 
-		Target->SetRelativeRotation(result.ToFRotator());
+		Target->SetWorldRotation(result.ToFRotator());
 		return;
 	}
 
@@ -255,7 +255,7 @@ void FGizmo::UpdateDrag(const FRay& MouseRay, const FVector2& MousePos)
 	float amount = delta.Dot(DragAxisDirection);
 
 	if (Mode == EGizmoMode::Location)
-		Target->SetRelativeLocation(DragStartLocation + DragAxisDirection * amount);
+		Target->SetWorldLocation(DragStartLocation + DragAxisDirection * amount);
 	else   // Scale
 	{
 		float factor = 1.0f + amount;
@@ -311,7 +311,7 @@ FVector FGizmo::GetAxisDirection(int Axis) const
 
 	if (bUseLocal && Target)
 	{
-		FMatrix rot = Target->GetRelativeRotation().Quaternion().ToFMatrix();
+		FMatrix rot = Target->GetWorldRotation().Quaternion().ToFMatrix();
 		FVector4 v = rot.TransformVector(AxisDirs[Axis]);
 		return FVector(v.X, v.Y, v.Z).Normalized();
 	}
@@ -329,7 +329,7 @@ FVector FGizmo::GetRenderLocationForView(const FVector& CameraLocation, const bo
 {
 	if (!Target) return FVector(0, 0, 0);
 	if (bCameraOrthographic) return GetLocation();
-	return (Target->GetRelativeLocation() - CameraLocation).Normalized() * 10.0f + CameraLocation;
+	return (Target->GetWorldLocation() - CameraLocation).Normalized() * 10.0f + CameraLocation;
 }
 
 // 현재 입력 View의 카메라 위치를 반환한다.

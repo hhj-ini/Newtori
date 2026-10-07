@@ -49,6 +49,8 @@ public:
 
 
 private:
+	void OnRegister() override;
+	void OnUnregister() override;
 	void ClampFogValues();
 
 	// 안개의 기본 농도

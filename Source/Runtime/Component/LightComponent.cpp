@@ -4,6 +4,19 @@
 
 #include <algorithm>
 
+// 새 Actor뿐 아니라 기존 Actor에 추가하거나 복원한 Light도 Scene에 등록한다.
+void ULightComponent::OnRegister()
+{
+	Super::OnRegister();
+	GetOwner()->GetWorld()->GetScene().AddLight(this);
+}
+
+void ULightComponent::OnUnregister()
+{
+	GetOwner()->GetWorld()->GetScene().RemoveLight(this);
+	Super::OnUnregister();
+}
+
 void ULightComponent::ClampLightValues()
 {
     Intensity = std::max(0.0f, Intensity);

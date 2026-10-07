@@ -21,19 +21,52 @@ UParticleSubUVComponent::UParticleSubUVComponent()
 	RowSize = 8;
 	FrameRate = 12.0f;
 
-	// Todo: Default setting, set value from arguments
-	//AtlasTexturePath = "ParticleAtlas.png";
-	
-	// AtlasTexture = nullptr;
-
-	//Shader = RenderCommand::CreateShader(L"Resources/Shader/ParticleSubUVShader.hlsl", FParticleVertex::GetLayout());
-	//Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");	
+	Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
+	Sprite = nullptr;
 }
 
 // 파티클 에셋과 배열을 준비하고 초기 상태를 채운다.
 void UParticleSubUVComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	InitializeParticles();
+}
+
+FBox UParticleSubUVComponent::CalcBounds() const
+{
+	FBox Bounds = Super::CalcBounds();
+	for (const FParticle& Particle : Particles)
+	{
+		if (!Particle.bAlive) continue;
+		const float Radius = std::abs(Particle.Scale) * 0.707107f;
+		const FVector Extent(Radius, Radius, Radius);
+		Bounds.Expand(FBox{Particle.Location - Extent, Particle.Location + Extent});
+	}
+	return Bounds;
+}
+
+void UParticleSubUVComponent::OnPropertyChanged(const FProperty& Property)
+{
+	Super::OnPropertyChanged(Property);
+	// Details의 직접 편집도 setter와 같은 범위 검사를 적용한다.
+	SetSubUVSize(ColSize, RowSize);
+	SetFrameRate(FrameRate);
+}
+
+void UParticleSubUVComponent::Serialize(json& Handle, bool bIsLoading)
+{
+	Super::Serialize(Handle, bIsLoading);
+	if (bIsLoading)
+	{
+		SetSubUVSize(ColSize, RowSize);
+		SetFrameRate(FrameRate);
+	}
+}
+
+void UParticleSubUVComponent::InitializeParticles()
+{
+	SetSubUVSize(ColSize, RowSize);
+	Particles.Reset();
 
 	Particles.Reserve(ParticleCount);
 	for (int32 i = 0; i < ParticleCount; ++i)
@@ -57,10 +90,8 @@ void UParticleSubUVComponent::BeginPlay()
 // 열·행 개수가 양수인지 검사해 SubUV 분할 수를 설정한다.
 void UParticleSubUVComponent::SetSubUVSize(uint32 NewColSize, uint32 NewRowSize)
 {
-	assert(NewColSize > 0 && NewRowSize > 0);
-
-	ColSize = NewColSize;
-	RowSize = NewRowSize;
+	ColSize = std::clamp(NewColSize, 1u, 1024u);
+	RowSize = std::clamp(NewRowSize, 1u, 1024u);
 }
 
 // 유효한 프레임 속도를 저장하고 음수·0이면 기본값을 쓴다.
@@ -112,6 +143,9 @@ void UParticleSubUVComponent::TickComponent(float DeltaTime)
 			Particle.SubUVFrame %= TotalFrames;
 		}
 	}
+
+	// 입자의 이동도 Scene BVH에 반영해 emitter 바깥으로 올라간 입자가 잘리지 않게 한다.
+	Super::OnTransformDirty();
 }
 
 // 기본 카메라 기준으로 파티클 상수와 렌더 패킷을 구성한다.
@@ -210,7 +244,6 @@ void UParticleSubUVComponent::RespawnParticle(FParticle& Particle)
 	Particle.Alpha = MAX_NORMALIZED_VALUE;
 }
 
-// Todo: Move to util class
 // 난수를 지정 실수 구간으로 변환한다.
 float UParticleSubUVComponent::GetRandomNumberBetween(float start, float end) const
 {
@@ -222,7 +255,6 @@ float UParticleSubUVComponent::GetRandomNumberBetween(float start, float end) co
 // 두 값을 alpha 비율로 선형 보간한다.
 float UParticleSubUVComponent::Lerp(float left, float right, float alpha) const
 {
-	//assert(alpha >= 0.0f && alpha <= 1.0f);
 	if (alpha < 0.0f)
 	{
 		alpha = 0.0f;
@@ -240,7 +272,6 @@ float UParticleSubUVComponent::Lerp(float left, float right, float alpha) const
 float UParticleSubUVComponent::GedSmoothStepedRatio(float start, float end, float value) const
 {
 	float normedValue = (value - start) / (end - start);
-	//assert(normedValue >= 0.0f && normedValue <= 1.0f);
 
 	if (normedValue < 0.0f)
 	{

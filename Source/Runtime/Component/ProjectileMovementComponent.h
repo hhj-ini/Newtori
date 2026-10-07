@@ -18,7 +18,6 @@ public:
 	}
 	virtual ~UProjectileMovementComponent() override = default;
 
-	virtual void BeginPlay() {};
 	virtual void TickComponent(float DeltaTime) override;
 
 	void SetInitialSpeed(float NewSpeed) { InitialSpeed = NewSpeed; }

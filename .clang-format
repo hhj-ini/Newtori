@@ -1,0 +1,30 @@
+# 프로젝트 C++ 스타일: 탭 4칸, Allman 중괄호, 기존 include 순서 유지.
+BasedOnStyle: Microsoft
+UseTab: Always
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Allman
+NamespaceIndentation: All
+IndentCaseLabels: false
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+SortIncludes: Never
+IncludeBlocks: Preserve
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+AlignAfterOpenBracket: DontAlign
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+ReflowComments: false
+MaxEmptyLinesToKeep: 1
+LineEnding: CRLF
+MacroBlockBegin: '^REFLECT_START$'
+MacroBlockEnd: '^REFLECT_END$'
+StatementMacros: [DECLARE_CLASS, PROPERTY, PROPERTY_TYPE]
+AccessModifierOffset: -4
+FixNamespaceComments: false

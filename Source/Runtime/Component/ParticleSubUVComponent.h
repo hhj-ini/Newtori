@@ -47,6 +47,7 @@ public:
 	
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime) override;
+	FBox CalcBounds() const override;
 
 	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue) override;
 	// Adapter가 View별 거리 정렬 입력을 만들 수 있도록 현재 파티클 배열을 읽기 전용으로 제공한다.
@@ -58,10 +59,16 @@ public:
 	// Adapter가 정렬한 파티클을 View별 Billboard 행렬과 거리 순서로 렌더 큐에 넣는다.
 	void SubmitParticleToRenderQueue(FRenderQueue& RenderQueue, int32 ParticleIndex, const FMatrix& WorldMatrix, float CameraDistanceSquared);
 
+	void OnPropertyChanged(const FProperty& Property) override;
+	void Serialize(json& Handle, bool bIsLoading) override;
 	void SetSubUVSize(uint32 Cols, uint32 Rows);
 	void SetFrameRate(float InFrameRate);
 
+protected:
+	bool UsesSpriteMaterial() const override { return false; }
+
 private:
+	void InitializeParticles();
 	void RespawnParticle(FParticle& Particle);
 
 	// Todo: Move to util class

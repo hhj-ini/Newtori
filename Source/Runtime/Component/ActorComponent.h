@@ -17,7 +17,9 @@ public:
 	UActorComponent() { PrimaryComponentTick.Target = this; }
 	virtual ~UActorComponent() override;
 
-	virtual void BeginPlay() {};
+	virtual void BeginPlay();
+	virtual void EndPlay();
+	bool HasBegunPlay() const { return bHasBegunPlay; }
 	virtual void TickComponent(float DeltaTime) {};
 
 	void RegisterComponent();
@@ -41,6 +43,6 @@ protected:
 private:
 	AActor* Owner = nullptr;
 	bool bRegistered = false;
-
 	bool bHasBeenInitialized = false;
+	bool bHasBegunPlay = false;
 };

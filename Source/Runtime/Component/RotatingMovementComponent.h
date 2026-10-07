@@ -17,9 +17,8 @@ public:
 		RotationRate.Yaw = 180.0f;
 		bRotationInLocalSpace = true;
 	}
-	virtual ~URotatingMovementComponent() override;
+	virtual ~URotatingMovementComponent() override = default;
 
-	virtual void BeginPlay() {};
 	virtual void TickComponent(float DeltaTime) override;
 
 private:

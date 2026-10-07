@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Math/Transform.h"
 #include "ActorComponent.h"
@@ -61,9 +61,11 @@ public:
 	void DetachFromParent();
 
 	virtual FBox CalcLocalBounds() const { return FBox{ FVector(), FVector() }; }
-	FBox CalcBounds() const { return CalcLocalBounds().GetWorldAABB(GetWorldMatrix()); }
+	virtual FBox CalcBounds() const { return CalcLocalBounds().GetWorldAABB(GetWorldMatrix()); }
 
 	FVector GetWorldLocation() const;
+	void SetWorldLocation(const FVector& InLocation);
+	void SetWorldRotation(const FRotator& InRotation);
 	FRotator GetWorldRotation() const;
 	FVector GetWorldScale3D() const;
 	FMatrix GetWorldMatrix() const;

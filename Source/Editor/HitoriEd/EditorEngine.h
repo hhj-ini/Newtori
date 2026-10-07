@@ -121,6 +121,15 @@ private:
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
 
 	bool bIsPlaying = false;
+	bool bIsEjected = false;
+	TMap<AActor*, AActor*> EditorToPIEActors;
+	TMap<AActor*, AActor*> PIEToEditorActors;
+
+	void SetEditingWorld(UWorld* World);
+	void ApplyActorSelection(AActor* Actor);
+	void SelectActorAndComponent(AActor* Actor, const FString& ComponentName);
+	void ApplyComponentSelection(UActorComponent* Component);
+	bool CanEditViewport() const { return !bIsPlaying || bIsEjected; }
 	uint32 PIEIndex = -1;
 
 	void ResetSceneSelection();

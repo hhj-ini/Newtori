@@ -112,6 +112,14 @@ void UObject::Serialize(json& Handle, bool bIsLoading)
 				else Handle[Property.Name] = Value;
 				break;
 			}
+			case EPropertyType::Rotator:
+			{
+				// RotationRate 등 회전 프로퍼티도 Transform과 별개로 저장·복원한다.
+				FRotator& Value = *static_cast<FRotator*>(Ptr);
+				if (bIsLoading) Value = Handle[Property.Name].get<FRotator>();
+				else Handle[Property.Name] = Value;
+				break;
+			}
 			case EPropertyType::Vector4:
 			{
 				FVector4& Value = *static_cast<FVector4*>(Ptr);

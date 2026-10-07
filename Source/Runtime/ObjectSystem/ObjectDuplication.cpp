@@ -6,10 +6,31 @@
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "Engine/Level.h"
+#include "ActorComponentReconstruction.h"
+#include "Component/MeshComponent.h"
+#include "Render/Material.h"
 
 namespace
 {
-    void CopyProperties(UObject* Src, UObject* Dst, UClass* FromClass)
+    // 공유 에셋은 유지하고, PIE에서 편집할 인스턴스만 분리한다.
+    // 같은 원본 인스턴스를 여러 슬롯이 사용하면 복제본에서도 동일한 인스턴스를 참조한다.
+    UMaterial* CopyMaterial(UMaterial* Source, TMap<UMaterial*, UMaterial*>& MaterialMap)
+    {
+        if (!Source || !Source->bIsInstance)
+            return Source;
+
+        if (UMaterial** Found = MaterialMap.Find(Source))
+            return *Found;
+
+        UMaterial* Copy = UMaterial::CreateInstance(Source);
+        Copy->Parent = Source->GetBaseAsset();
+        MaterialMap.Add(Source, Copy);
+        return Copy;
+    }
+
+    // 값은 직접 복사한다. Scene 등록과 프록시 갱신은 모든 참조를 복원한 뒤 한 번에 수행한다.
+    void CopyProperties(UObject* Src, UObject* Dst, UClass* FromClass,
+        const TMap<UActorComponent*, UActorComponent*>& ComponentMap, TMap<UMaterial*, UMaterial*>& MaterialMap)
     {
         for (UClass* c = FromClass; c; c = c->Super)
         {
@@ -100,13 +121,16 @@ namespace
                     {
                         UObject*& SrcVal = *static_cast<UObject**>(SrcPtr);
                         UObject*& DstVal = *static_cast<UObject**>(DstPtr);
+                        if (UMaterial* Material = Cast<UMaterial>(SrcVal))
+                            DstVal = CopyMaterial(Material, MaterialMap);
+                        else
                         DstVal = SrcVal;
                     }
-                    // TODO: UActorComponent 계열은 ComponentMap을 이용한 remap이 필요하다.
-                    //else if (p.Class->IsChildOf(UActorComponent::StaticClass()))
-
-                    else {
-
+                    else if (p.Class->IsChildOf(UActorComponent::StaticClass()))
+                    {
+                        UActorComponent* Source = *static_cast<UActorComponent**>(SrcPtr);
+                        UActorComponent* const* Found = ComponentMap.Find(Source);
+                        *static_cast<UActorComponent**>(DstPtr) = Found ? *Found : nullptr;
                     }
                     break;
                 }
@@ -132,90 +156,63 @@ AActor* FObjectDuplicator::DuplicateActorToWorld(const AActor* SourceActor, UWor
     if (!DestActor)
         return nullptr;
 
-    // 2. 원본 Component와 복제본 Component의 대응 관계를 만든다.
-    // 기본 Subobject는 기존 Component와 매칭하고, 추가 Component는 새로 생성한다.
+    DestActor->SetName(SourceActor->GetFName());
+
+    // 생성자의 기본 구성과 편집된 구성을 맞춘 뒤 원본/복제본 대응표를 만든다.
+    // UUID 같은 임시 표시 컴포넌트는 복제하지 않는다.
+    TArray<UActorComponent*> SourceComponents;
+    for (UActorComponent* Component : SourceActor->GetComponents())
+        if (!Component->HasAnyFlags(EObjectFlags::RF_Transient))
+            SourceComponents.Add(Component);
+
+    TArray<FActorComponentDescriptor> Descriptors;
+    for (UActorComponent* SourceComp : SourceComponents)
+        Descriptors.Add({SourceComp->GetFName(), SourceComp->GetClass()});
+
+    const TArray<UActorComponent*> DestComponents = ReconstructActorComponents(DestActor, Descriptors);
     TMap<UActorComponent*, UActorComponent*> ComponentMap;
 
-    for (UActorComponent* SourceComp: SourceActor->GetComponents())
+    for (int32 Index = 0; Index < DestComponents.Num(); ++Index)
     {
-        UActorComponent* MatchedDestComp = nullptr;
-
-        // 생성자가 만든 기본 Subobject인지 Name + Class로 확인한다.
-        for (UActorComponent* DestComp : DestActor->GetComponents())
-        {
-            if (SourceComp->GetFName() == DestComp->GetFName() &&
-                SourceComp->GetClass() == DestComp->GetClass())
-            {
-                MatchedDestComp = DestComp;
-                break;
-            }
-        }
-        if (MatchedDestComp)
-        {
-            // 기존 기본 Subobject끼리 Source -> Dest 대응을 기록한다.
-            ComponentMap.Add(SourceComp, MatchedDestComp);
-        }
-        else
-        {
-            // 대응되는 기본 Subobject가 없으면 복제본 Actor에 새 Component를 생성한다.
-            UActorComponent* NewComp = CastChecked<UActorComponent>(FObjectFactory::ConstructObject(SourceComp->GetClass(), DestActor, NAME_None));
-            DestActor->AddOwnedComponent(NewComp);
-            ComponentMap.Add(SourceComp, NewComp);
-        }
+        if (!DestComponents[Index])
+            return nullptr;
+        ComponentMap.Add(SourceComponents[Index], DestComponents[Index]);
     }
 
-    // 3. 원본 RootComponent에 대응되는 복제본 Component를 Root로 다시 연결한다.
-    USceneComponent* SourceRoot = SourceActor->GetRootComponent();
-    if (SourceRoot)
+    if (UActorComponent** Root = ComponentMap.Find(SourceActor->GetRootComponent()))
+        DestActor->SetRootComponent(Cast<USceneComponent>(*Root));
+
+    // 상대 Transform은 그대로 복사하고, 부모는 대상 World의 컴포넌트로 연결한다.
+    TMap<UMaterial*, UMaterial*> MaterialMap;
+    CopyProperties(const_cast<AActor*>(SourceActor), DestActor, Class, ComponentMap, MaterialMap);
+    for (UActorComponent* SourceComp: SourceComponents)
     {
-        UActorComponent** Found = ComponentMap.Find(SourceRoot);
-        if (Found)
+        UActorComponent* DestComp = *ComponentMap.Find(SourceComp);
+        assert(SourceComp != DestComp);
+        CopyProperties(SourceComp, DestComp, SourceComp->GetClass(), ComponentMap, MaterialMap);
+    if (USceneComponent* SourceScene = Cast<USceneComponent>(SourceComp))
         {
-            USceneComponent* DestComp = Cast<USceneComponent>(*Found);
-            if (DestComp)
-            {
-                DestActor->SetRootComponent(DestComp);
+            UActorComponent** Parent = ComponentMap.Find(SourceScene->GetAttachParent());
+            Cast<USceneComponent>(DestComp)->SetupAttachment(Parent ? Cast<USceneComponent>(*Parent) : nullptr);
+        }
+
+        // 슬롯별 머티리얼은 리플렉션 밖에 있으므로 별도로 복원한다.
+        if (UMeshComponent* SourceMesh = Cast<UMeshComponent>(SourceComp))
+        {
+            UMeshComponent* DestMesh = Cast<UMeshComponent>(DestComp);
+            DestMesh->ClearOverrideMaterials();
+            for (int32 Slot = 0; Slot < SourceMesh->GetNumOverrideMaterials(); ++Slot)
+                DestMesh->SetMaterial(Slot, CopyMaterial(SourceMesh->GetOverrideMaterial(Slot), MaterialMap));
+            }
+        else if (UPrimitiveComponent* SourcePrimitive = Cast<UPrimitiveComponent>(SourceComp))
+    {
+            UPrimitiveComponent* DestPrimitive = Cast<UPrimitiveComponent>(DestComp);
+            for (int32 Slot = 0; Slot < SourcePrimitive->GetNumMaterials(); ++Slot)
+                DestPrimitive->SetMaterial(Slot, CopyMaterial(SourcePrimitive->GetMaterial(Slot), MaterialMap));
             }
         }
-    }
-
-    // 4. 원본 SceneComponent의 Attachment 관계를 복제본끼리 다시 연결한다.
-    for (UActorComponent* SourceComp : SourceActor->GetComponents())
-    {
-        USceneComponent* SourceScene = Cast<USceneComponent>(SourceComp);
-        if (!SourceScene) continue;
-
-        USceneComponent* SourceParent = SourceScene->GetAttachParent();
-        if (!SourceParent) continue;
-
-        UActorComponent** FoundDestScene = ComponentMap.Find(SourceScene);
-        UActorComponent** FoundDestParent = ComponentMap.Find(SourceParent);
-
-        if (FoundDestScene && FoundDestParent)
-        {
-            USceneComponent* DestScene = Cast<USceneComponent>(*FoundDestScene);
-            USceneComponent* DestParent = Cast<USceneComponent>(*FoundDestParent);
-
-            if (DestScene && DestParent)
-            {
-                DestScene->SetupAttachment(DestParent);
-            }
-        }
-    }
-    
-    // 5. Component 상태를 복사한다.
-    for (UActorComponent* SourceComp : SourceActor->GetComponents())
-    {
-        if (SourceComp)
-        {
-            UActorComponent** DestComp = ComponentMap.Find(SourceComp);
-            if (DestComp)
-            {
-                assert(SourceComp != *DestComp);
-                CopyProperties(SourceComp, *DestComp, SourceComp->GetClass());
-            }
-        }
-    }
+    // 멤버 직접 복사는 setter를 거치지 않으므로 Transform과 렌더 상태도 명시적으로 갱신한다.
+    RegisterRestoredActorComponents(DestActor);
 
     return DestActor;
 }

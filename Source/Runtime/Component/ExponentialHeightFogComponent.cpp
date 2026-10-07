@@ -3,6 +3,18 @@
 #include "Engine/World.h"
 #include <algorithm>
 
+void UExponentialHeightFogComponent::OnRegister()
+{
+	Super::OnRegister();
+	GetOwner()->GetWorld()->GetScene().AddExponentialHeightFog(this);
+}
+
+void UExponentialHeightFogComponent::OnUnregister()
+{
+	GetOwner()->GetWorld()->GetScene().RemoveExponentialHeightFog(this);
+	Super::OnUnregister();
+}
+
 void UExponentialHeightFogComponent::ClampFogValues()
 {
 	FogDensity = std::max(0.0f, FogDensity);

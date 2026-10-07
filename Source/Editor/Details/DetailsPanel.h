@@ -1,6 +1,7 @@
 #pragma once
 
 #include <format>
+#include <functional>
 #include "Editor/EditorUI/EditorPanel.h"
 
 #include "Engine/World.h"
@@ -22,15 +23,18 @@ public:
 	ImFont* GetCustomFont() { return CustomFont; }
 
 	void SetWorld(UWorld* InWorld) { World = InWorld; }
-	void SetTarget(USceneComponent* InTargetOrNull) { Target = InTargetOrNull; SelectedComponent = nullptr;}
+	void SetActor(AActor* InActor);
+	void SelectComponent(UActorComponent* Component);
+	void SetComponentSelectionCallback(std::function<void(UActorComponent*)> Callback) { ComponentSelectionCallback = Callback; }
 
 	UActorComponent* GetSelectedComponent() const { return SelectedComponent; }
-	void ClearSelectedComponent() { SelectedComponent = nullptr; }
+	void ClearSelectedComponent() { SelectComponent(nullptr); }
 
 private:
 	ImFont* CustomFont = nullptr;
 	UWorld* World = nullptr;
-	USceneComponent* Target = nullptr;
+	AActor* TargetActor = nullptr;
+	std::function<void(UActorComponent*)> ComponentSelectionCallback;
 
 	USceneComponent* ComponentToExpandNextFrame = nullptr;
 

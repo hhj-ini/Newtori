@@ -181,10 +181,19 @@ void UBenchmarkEngine::InitEditorTools()
 	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(World);
 	OutlinerPanel->SetSelectionCallback(
-		[this](USceneComponent* Root) { 
-			Gizmo->SetTarget(Root);
-			Outline->SetTarget(Cast<UPrimitiveComponent>(Root));
-			DetailsPanel->SetTarget(Root); });
+		[this](AActor* Actor)
+		{
+			Gizmo->SetTarget(Actor ? Actor->GetRootComponent() : nullptr);
+			Outline->SetActor(Actor);
+			DetailsPanel->SetActor(Actor);
+		});
+	DetailsPanel->SetComponentSelectionCallback([this](UActorComponent* Component)
+	{
+		AActor* Actor = OutlinerPanel->GetSelectedActor();
+		Gizmo->SetTarget(Component ? Cast<USceneComponent>(Component) : Actor ? Actor->GetRootComponent() : nullptr);
+		if (Component) Outline->SetTarget(Cast<UPrimitiveComponent>(Component));
+		else Outline->SetActor(Actor);
+	});
 	OutlinerPanel->SetDeleteActorCallback(
 		[this, World](AActor* Actor)
 		{
@@ -202,7 +211,8 @@ void UBenchmarkEngine::SelectPrimitive(UPrimitiveComponent* Primitive)
 {
 	Gizmo->SetTarget(Primitive);
 	Outline->SetTarget(Primitive);
-	DetailsPanel->SetTarget(Primitive);
+	DetailsPanel->SetActor(Primitive ? Primitive->GetOwner() : nullptr);
+	DetailsPanel->SelectComponent(Primitive);
 }
 
 UPrimitiveComponent* UBenchmarkEngine::GetSelectedPrimitive() const
@@ -391,7 +401,7 @@ void UBenchmarkEngine::Tick(float DeltaTime)
 
 		DrawSelectionBounds(ViewProjection);
 
-		if (Outline->GetTarget())
+		if (Outline->HasSelection())
 			OutlineRenderer->OnRender(*Outline, ViewProjection, Viewport);
 
 		if (Gizmo->GetTarget())

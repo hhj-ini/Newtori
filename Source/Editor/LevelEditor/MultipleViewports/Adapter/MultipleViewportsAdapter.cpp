@@ -579,34 +579,11 @@ FMatrix FMultipleViewportsAdapter::BuildEngineBillboardMatrix(const int32 ViewIn
 {
     assert(ViewIndex >= 0 && ViewIndex < 4);
     const FViewCamera& ViewCamera = Views.Cameras[ViewIndex];
-    if (ViewCamera.Projection.Mode == EProjectionMode::Orthographic)
-    {
-        // 직교 투영의 모든 시선은 평행하므로 카메라 위치가 아니라 고정된 화면 기저를 사용한다.
-        // 위치 기반 LookAt을 사용하면 평면 이동 시 오브젝트-카메라 벡터가 달라져 Billboard가 회전한다.
-        const FVector Facing = NormalizedOrZero(CameraForward(ViewCamera.Transform.Rotation)) * -1.0f;
-        const FVector Right = NormalizedOrZero(CameraRight(ViewCamera.Transform.Rotation));
-        const FVector Up = NormalizedOrZero(CameraUp(ViewCamera.Transform.Rotation));
-
-        FMatrix EngineMatrix;
-        EngineMatrix.SetIdentity();
-        EngineMatrix.M[0][0] = Facing.X; EngineMatrix.M[0][1] = Facing.Y; EngineMatrix.M[0][2] = Facing.Z;
-        EngineMatrix.M[1][0] = Right.X * Width; EngineMatrix.M[1][1] = Right.Y * Width; EngineMatrix.M[1][2] = Right.Z * Width;
-        EngineMatrix.M[2][0] = Up.X * Height; EngineMatrix.M[2][1] = Up.Y * Height; EngineMatrix.M[2][2] = Up.Z * Height;
-        EngineMatrix.M[3][0] = WorldPosition.X; EngineMatrix.M[3][1] = WorldPosition.Y; EngineMatrix.M[3][2] = WorldPosition.Z;
-        return EngineMatrix;
-    }
-
-    const FBillboardTransform Result = ComputeBillboardTransform(
-        {WorldPosition, {Width, Height}},
-        ViewCamera.Transform);
-    FMatrix EngineMatrix = Result.WorldMatrix;
-
-    // 팀 엔진의 ParticleQuad는 Core의 Billboard 오른쪽 축과 반대 와인딩을 사용한다.
-    // 오른쪽 축만 뒤집어 기존 렌더 경로와 같은 앞면이 카메라를 향하게 한다.
-    EngineMatrix.M[1][0] = -EngineMatrix.M[1][0];
-    EngineMatrix.M[1][1] = -EngineMatrix.M[1][1];
-    EngineMatrix.M[1][2] = -EngineMatrix.M[1][2];
-    return EngineMatrix;
+	// 원근/직교 모두 화면과 평행하게 유지한다.
+	return UBillboardComponent::BuildScreenAlignedMatrix(WorldPosition,
+		NormalizedOrZero(CameraForward(ViewCamera.Transform.Rotation)),
+		NormalizedOrZero(CameraRight(ViewCamera.Transform.Rotation)),
+		NormalizedOrZero(CameraUp(ViewCamera.Transform.Rotation)), Width, Height);
 }
 
 // 지정 View 카메라의 투영 모드가 Orthographic인지 검사한다.
@@ -711,10 +688,10 @@ void FMultipleViewportsAdapter::BuildRenderQueue(const int32 ViewIndex, FRenderQ
         }
         else if (UBillboardComponent* Billboard = Cast<UBillboardComponent>(Primitive))
         {
-            const FVector Scale = Billboard->GetWorldScale3D();
+            const FVector2 Size = Billboard->GetSpriteWorldSize();
             Billboard->SubmitToRenderQueue(
                 OutQueue,
-                BuildEngineBillboardMatrix(ViewIndex, Billboard->GetWorldLocation(), Scale.Y, Scale.Z));
+                BuildEngineBillboardMatrix(ViewIndex, Billboard->GetWorldLocation(), Size.X, Size.Y));
         }
         else if (auto* StaticComponent = Cast<UStaticMeshComponent>(Primitive))
         {
@@ -752,9 +729,9 @@ FPickHit FMultipleViewportsAdapter::PickActiveView(const FVector2 LocalMousePosi
     const auto ResolveBillboardTransform = [](const UBillboardComponent& Billboard, const void* Context) -> FMatrix
     {
         const auto& Adapter = *static_cast<const FMultipleViewportsAdapter*>(Context);
-        const FVector Scale = Billboard.GetWorldScale3D();
+        const FVector2 Size = Billboard.GetSpriteWorldSize();
         return Adapter.BuildEngineBillboardMatrix(Adapter.GetActiveViewIndex(),
-            Billboard.GetWorldLocation(), Scale.Y, Scale.Z);
+            Billboard.GetWorldLocation(), Size.X, Size.Y);
     };
     FHitResult Hit;
     if (World.LineTraceSingle(Ray, Hit, ResolveBillboardTransform, this))

@@ -6,6 +6,8 @@
 void UProjectileMovementComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
+	if (!ResolveUpdatedComponent())
+		return;
 
 	if (Velocity.IsZero())
 	{

@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "Editor/Viewports/ViewportsPanel.h"
 #include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapter.h"
 
@@ -26,7 +26,7 @@ constexpr float StatOverlayPadding = 6.0f;
 constexpr ImU32 StatOverlayBackgroundColor = IM_COL32(0, 0, 0, 140);
 constexpr ImU32 TitleColor = IM_COL32(255, 210, 60, 255);
 constexpr ImU32 ValueColor = IM_COL32(235, 235, 235, 255);
-}
+} // namespace
 
 // 네 View의 렌더 타깃을 최소 크기로 초기화한다.
 bool FViewportsPanel::Init()
@@ -240,35 +240,52 @@ void FViewportsPanel::OnRender()
 	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
 	{
 		EWorldType WorldType = ViewportAdapter->GetViewportWorld(ViewIndex)->GetWorldType();
-		if (EWorldType::PIE == WorldType)
+		if (EWorldType::PIE == WorldType && Slots[ViewIndex].bActive)
 		{
 			continue;
 		}
 
 		if (!Slots[ViewIndex].bActive)
 			continue;
-		ImGui::SetCursorScreenPos({
-			ContentOrigin.x + Slots[ViewIndex].Rect.X + 8.0f,
-			ContentOrigin.y + Slots[ViewIndex].Rect.Y + 8.0f});
+		const float ToolbarLeft = ContentOrigin.x + Slots[ViewIndex].Rect.X + 8.0f;
+		const float ToolbarWidth = std::max(1.0f, Slots[ViewIndex].Rect.Width - 16.0f);
+		ImVec2 ToolbarCursor{ToolbarLeft,
+			ContentOrigin.y + Slots[ViewIndex].Rect.Y + 8.0f};
+		// View를 줄여도 컨트롤이 옆 View로 넘어가거나 오른쪽에서 잘리지 않도록 줄바꿈한다.
+		auto PlaceToolbarItem = [&](float PreferredWidth)
+		{
+			const float Width = std::min(PreferredWidth, ToolbarWidth);
+			if (ToolbarCursor.x > ToolbarLeft && ToolbarCursor.x + Width > ToolbarLeft + ToolbarWidth)
+			{
+				ToolbarCursor.x = ToolbarLeft;
+				ToolbarCursor.y += ImGui::GetFrameHeightWithSpacing();
+			}
+			ImGui::SetCursorScreenPos(ToolbarCursor);
+			ImGui::SetNextItemWidth(Width);
+			ToolbarCursor.x += Width + ImGui::GetStyle().ItemSpacing.x;
+		};
+		auto ComboWidth = [](const char* LongestLabel)
+		{
+			return ImGui::CalcTextSize(LongestLabel).x + ImGui::GetFrameHeight() +
+				   ImGui::GetStyle().FramePadding.x * 2.0f;
+		};
 		ImGui::PushID(100 + ViewIndex);
 		int SelectedPreset = static_cast<int>(CurrentCameraPresets[ViewIndex]);
-		ImGui::SetNextItemWidth(120.0f);
+		PlaceToolbarItem(ComboWidth("Ortho (Current)"));
 		if (ImGui::Combo("##CameraPreset", &SelectedPreset, CameraPresetLabels, IM_ARRAYSIZE(CameraPresetLabels)))
 		{
 			PendingCameraPresetViewIndex = ViewIndex;
 			PendingCameraPreset = static_cast<EMultipleViewportsCameraPreset>(SelectedPreset);
 		}
-		ImGui::SameLine();
 
 		// 레이아웃과 독립적으로 각 View의 장면 Fill Mode를 편집한다.
         if (ViewportAdapter)
         {
             int Mode = ViewportAdapter->IsViewWireframe(ViewIndex) ? 1 : 0;
             const char* Labels[] = {"Solid", "Wireframe"};
-            ImGui::SetNextItemWidth(100.0f);
+			PlaceToolbarItem(ComboWidth("Wireframe"));
             if (ImGui::Combo("##FillMode", &Mode, Labels, 2))
                 ViewportAdapter->SetViewWireframe(ViewIndex, Mode == 1);
-            ImGui::SameLine();
         }
 
 		int DisplayMode = static_cast<int>(Slots[ViewIndex].DisplayMode);
@@ -278,7 +295,7 @@ void FViewportsPanel::OnRender()
 			"Scene Depth"
 		};
 
-		ImGui::SetNextItemWidth(120.0f);
+		PlaceToolbarItem(ComboWidth("Scene Depth"));
 		if (ImGui::Combo(
 			"##DisplayMode",
 			&DisplayMode,
@@ -288,7 +305,8 @@ void FViewportsPanel::OnRender()
 			Slots[ViewIndex].DisplayMode =
 				static_cast<EViewportDisplayMode>(DisplayMode);
 		}
-		ImGui::SameLine();
+
+		PlaceToolbarItem(ImGui::CalcTextSize("Single").x + ImGui::GetStyle().FramePadding.x * 2.0f);
 
         if (CurrentLayoutMode == ELayoutMode::QuadSplit)
 		{
@@ -311,7 +329,7 @@ void FViewportsPanel::OnRender()
 			(FStatOverlay::IsEnabled(EStatFlags::Profile) ||
 				FStatRegistry::Find(EditorStats::STAT_PickingTime)))
 		{
-			ImGui::SameLine();
+			PlaceToolbarItem(ImGui::CalcTextSize("Reset Stats").x + ImGui::GetStyle().FramePadding.x * 2.0f);
 			if (ImGui::SmallButton("Reset Stats"))
 				FStatRegistry::Reset();
 			StatResetButtonMin = ImGui::GetItemRectMin();

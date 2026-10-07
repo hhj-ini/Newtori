@@ -7,14 +7,19 @@ class UBillboardComponent : public UPrimitiveComponent
 	DECLARE_CLASS(UBillboardComponent, UPrimitiveComponent)
 
 	REFLECT_START(ClassName)
-		REFLECT_END()
+		PROPERTY(Sprite)
+	REFLECT_END()
 
 public:
 	UBillboardComponent();
-	virtual ~UBillboardComponent() override;
-
-	virtual void BeginPlay() override;
-	virtual void TickComponent(float DeltaTime) override;
+	virtual ~UBillboardComponent() override = default;
+	UTexture2D* GetSprite() const { return Sprite; }
+	void SetSprite(UTexture2D* InSprite);
+	FVector2 GetSpriteWorldSize() const;
+	FBox CalcBounds() const override;
+	void OnPropertyChanged(const FProperty& Property) override;
+	static FMatrix BuildScreenAlignedMatrix(const FVector& Position, const FVector& Forward, const FVector& Right,
+		const FVector& Up, float Width, float Height);
 
 	virtual bool LineTraceComponent(const FRay& WorldRay, FHitResult& OutHit) override;
 	// 클릭한 View의 실제 렌더 행렬로 Quad Mesh 교차를 판정한다.
@@ -35,8 +40,11 @@ public:
 	virtual void Serialize(json& Handle, bool bIsLoading) override;
 
 protected:
+	void OnRegister() override;
+	virtual bool UsesSpriteMaterial() const { return true; }
+	UTexture2D* Sprite = nullptr;
 	UMaterial* Material = nullptr;
 	UStaticMesh* QuadMesh = nullptr;
 private:
-
+	void UpdateSpriteMaterial();
 };

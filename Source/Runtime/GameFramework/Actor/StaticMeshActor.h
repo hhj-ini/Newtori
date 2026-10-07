@@ -12,7 +12,7 @@ public:
 
 	virtual void BeginPlay() override;
 
-	UStaticMeshComponent* GetStaticMeshComponent() const { return StaticMeshComponent; }
+	UStaticMeshComponent* GetStaticMeshComponent() const { return FindComponentByClass<UStaticMeshComponent>(); }
 	void SetPrimitiveType(EPrimitiveType Type);
 
 private:

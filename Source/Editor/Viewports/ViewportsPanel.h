@@ -17,6 +17,7 @@ class FViewportsPanel : public IEditorPanel
 public:
 	// View 표시 모드를 편집할 Adapter를 연결한다. 엔진이 수명을 보장한다.
 	void SetViewportAdapter(FMultipleViewportsAdapter* Value) { ViewportAdapter = Value; }
+	void SetPIEEditing(bool bValue) { bPIEEditing = bValue; }
 	// 네 View의 렌더 타깃과 UI 제어 상태를 초기화한다.
 	bool Init() override;
 	// 프레임 입력에서 Splitter Drag와 View별 UI 요청을 수집한다.
@@ -53,6 +54,7 @@ public:
 
 private:
 	FMultipleViewportsAdapter* ViewportAdapter = nullptr;
+	bool bPIEEditing = false;
 	struct FViewSlot
 	{
 		// View 하나의 Rect·활성 상태·Color/Depth 타깃과 렌더 정보를 담는다.

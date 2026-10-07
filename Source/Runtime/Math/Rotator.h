@@ -40,13 +40,10 @@ struct FRotator
 		return *this;
 	}
 
-	FRotator operator*(const float Value)
+	FRotator operator*(const float Value) const
 	{
-		Pitch *= Value;
-		Yaw *= Value;
-		Roll *= Value;
-
-		return *this;
+		// 프레임 회전량을 구해도 원본 RotationRate는 변경하지 않는다.
+		return FRotator(Pitch * Value, Yaw * Value, Roll * Value);
 	}
 };
 

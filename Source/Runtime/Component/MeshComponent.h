@@ -22,6 +22,7 @@ public:
 	UMaterial* GetMaterial(int32 SlotIndex) const override;
 	// 이 컴포넌트만의 덮어쓰기. 없으면 nullptr
 	UMaterial* GetOverrideMaterial(int32 SlotIndex) const;
+	int32 GetNumOverrideMaterials() const { return OverrideMaterials.Num(); }
 	// 덮어쓰기 설정. nullptr을 넣으면 메시 기본값으로 되돌린다 (메시 에셋은 건드리지 않음)
 	void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) override;
 	void ClearOverrideMaterials() { OverrideMaterials.Reset(); MarkRenderStateDirty(); }

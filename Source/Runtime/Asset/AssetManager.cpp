@@ -117,6 +117,7 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().ScanAssets("Assets", OnProgress);
 	Get().CreateDefaultMeshes();
 	Get().CreateParticleMaterial();
+	Get().CreateBillboardMaterial();
 }
 
 void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgress& OnProgress)
@@ -285,6 +286,18 @@ void UAssetManager::CreateDefaultMaterial()
 	DefaultMat->ParamLayout = EMaterialParamLayout::StaticMesh;
 	DefaultMat->ParamBuffer = RenderCommand::CreateConstantBuffer(sizeof(FStaticMeshMaterialParams));
 	RegisterAsset("DefaultMaterial", DefaultMat);
+}
+
+void UAssetManager::CreateBillboardMaterial()
+{
+	UMaterial* Material = FObjectFactory::ConstructObject<UMaterial>();
+	Material->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/BillboardShader.hlsl");
+	Material->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
+	Material->BlendState = EBlendState::AlphaBlend;
+	Material->DepthStencilState = EDepthStencilState::ReadOnly;
+	Material->ParamLayout = EMaterialParamLayout::StaticMesh;
+	Material->ParamBuffer = RenderCommand::CreateConstantBuffer(sizeof(FStaticMeshMaterialParams));
+	RegisterAsset("BillboardMaterial", Material);
 }
 
 void UAssetManager::CreateParticleMaterial()

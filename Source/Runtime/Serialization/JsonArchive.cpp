@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "JsonArchive.h"
 
 #include "Engine/World.h"
@@ -11,9 +11,105 @@
 #include "Asset/AssetManager.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "ObjectSystem/ActorComponentReconstruction.h"
 
 namespace
 {
+	bool ValidateFloatArray(const json& Value, size_t Count)
+	{
+		return Value.is_array() && Value.size() == Count &&
+			   std::all_of(Value.begin(), Value.end(), [](const json& Element) { return Element.is_number(); });
+	}
+
+	bool ValidateProperties(const json& Properties, UClass* Class)
+	{
+		if (!Properties.is_null() && !Properties.is_object())
+			return false;
+		try
+		{
+			for (UClass* Current = Class; Current; Current = Current->Super)
+			{
+				for (const FProperty& Property : Current->GetProperties())
+				{
+					if (!Properties.contains(Property.Name))
+						continue;
+					const json& Value = Properties[Property.Name];
+					switch (Property.Type)
+					{
+					case EPropertyType::Float:
+						Value.get<float>();
+						break;
+					case EPropertyType::Int:
+						Value.get<int32>();
+						break;
+					case EPropertyType::Bool:
+						Value.get<bool>();
+						break;
+					case EPropertyType::String:
+						Value.get<FString>();
+						break;
+					case EPropertyType::Vector:
+					case EPropertyType::Rotator:
+						if (!ValidateFloatArray(Value, 3))
+							return false;
+						break;
+					case EPropertyType::Vector4:
+					case EPropertyType::Color:
+						if (!ValidateFloatArray(Value, 4))
+							return false;
+						break;
+					case EPropertyType::Transform:
+						if (!Value.is_object() || !ValidateFloatArray(Value.at("Location"), 3) ||
+							!ValidateFloatArray(Value.at("Rotation"), 3) || !ValidateFloatArray(Value.at("Scale"), 3))
+							return false;
+						break;
+					case EPropertyType::Object:
+						if (!Value.is_null() && !Value.is_string())
+							return false;
+						break;
+					default:
+						break;
+					}
+				}
+			}
+			if (Properties.contains("OverrideMaterials"))
+			{
+				if (!Properties["OverrideMaterials"].is_array())
+					return false;
+				for (const json& Material : Properties["OverrideMaterials"])
+				{
+					if (Material.is_null())
+						continue;
+					if (!Material.is_object())
+						return false;
+					for (const char* Key : {"Asset", "Base", "SamplerState", "BlendState"})
+						if (Material.contains(Key))
+							Material[Key].get<FString>();
+					if (Material.contains("BaseColor") && !ValidateFloatArray(Material["BaseColor"], 4))
+						return false;
+					if (Material.contains("UVScrollSpeed"))
+					{
+						if (!ValidateFloatArray(Material["UVScrollSpeed"], 2))
+							return false;
+					}
+					if (Material.contains("Textures"))
+					{
+						if (!Material["Textures"].is_array())
+							return false;
+						for (const json& Texture : Material["Textures"])
+							if (!Texture.is_null() && !Texture.is_string())
+								return false;
+					}
+				}
+			}
+		}
+		catch (const json::exception&)
+		{
+			return false;
+		}
+		return true;
+	}
+
 	// "FOV": [60.0] 처럼 배열 하나로 저장된 값과 숫자 하나 모두 받는다.
 	float ReadScalar(const json& Value, float Default)
 	{
@@ -52,7 +148,7 @@ namespace
 		if (CameraJson.contains("FarClip"))
 			Camera->SetFarZ(ReadScalar(CameraJson["FarClip"], Camera->GetFarZ()));
 	}
-}
+} // namespace
 
 bool FJsonArchive::SaveWorld(UWorld* World, const FString& Path)
 {
@@ -66,7 +162,7 @@ bool FJsonArchive::SaveWorld(UWorld* World, const FString& Path)
 
 	json Json;
 
-	Json["Version"] = 2;
+	Json["Version"] = 3;
 	Json["Actors"] = json::array();
 
 	for (AActor* Actor : Level->GetActors())
@@ -76,14 +172,23 @@ bool FJsonArchive::SaveWorld(UWorld* World, const FString& Path)
 
 		json ActorJson;
 		ActorJson["Class"] = Actor->GetClass()->Name;
+		ActorJson["Name"] = Actor->GetName();
+		ActorJson["RootComponent"] =
+			Actor->GetRootComponent() ? json(Actor->GetRootComponent()->GetName()) : json(nullptr);
+		ActorJson["Components"] = json::array();
 		Actor->Serialize(ActorJson["Properties"], false);
 
 		for (UActorComponent* Component : Actor->GetComponents())
 		{
-			if (!Component) continue;
+			if (!Component || Component->HasAnyFlags(EObjectFlags::RF_Transient)) continue;
 			json ComponentJson;
 			ComponentJson["Name"] = Component->GetName();
 			ComponentJson["Class"] = Component->GetClass()->Name;
+			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+			{
+				USceneComponent* Parent = SceneComponent->GetAttachParent();
+				ComponentJson["AttachParent"] = Parent ? json(Parent->GetName()) : json(nullptr);
+			}
 			Component->Serialize(ComponentJson["Properties"], false);
 
 			ActorJson["Components"].push_back(ComponentJson);
@@ -154,146 +259,136 @@ bool FJsonArchive::LoadWorld(UWorld* World, const FString& Path)
 		return true;
 	}
 
-	if (!Json.contains("Version") || Json["Version"] != 2)
+	if (!Json.contains("Version") || (Json["Version"] != 2 && Json["Version"] != 3))
+		return false;
+	if (!Json.contains("Actors") || !Json["Actors"].is_array())
 		return false;
 
-	// 1. 모든 액터의 기본 정보를 먼저 검사
+	// 클래스, 이름, 부모 참조를 검사한 뒤에만 현재 장면을 비운다.
 	for (const json& ActorJson : Json["Actors"])
 	{
-		if (!ActorJson.is_object())
-			return false;
-
-		if (!ActorJson.contains("Class") ||
+		if (!ActorJson.is_object() || !ActorJson.contains("Class") ||
 			!ActorJson["Class"].is_string())
 			return false;
 
 		UClass* Class =
 			FindClass(ActorJson["Class"].get<FString>());
 
-		if (!Class || !Class->IsChildOf(AActor::StaticClass()))
+		if (!Class || !Class->Constructor || !Class->IsChildOf(AActor::StaticClass()))
 			return false;
+		if (ActorJson.contains("Properties") && !ValidateProperties(ActorJson["Properties"], Class))
+			return false;
+	if (!ActorJson.contains("Components") || !ActorJson["Components"].is_array())
+		return false;
+		std::unordered_map<FString, UClass*> ComponentClasses;
+		std::unordered_map<FString, FString> Parents;
+		for (const json& ComponentJson : ActorJson["Components"])
+		{
+			if (!ComponentJson.is_object() || !ComponentJson.contains("Name") || !ComponentJson["Name"].is_string() ||
+				!ComponentJson.contains("Class") || !ComponentJson["Class"].is_string())
+				return false;
+			UClass* ComponentClass = FindClass(ComponentJson["Class"].get<FString>());
+			if (!ComponentClass || !ComponentClass->Constructor ||
+				!ComponentClass->IsChildOf(UActorComponent::StaticClass()))
+				return false;
+			if (ComponentJson.contains("Properties") &&
+				!ValidateProperties(ComponentJson["Properties"], ComponentClass))
+				return false;
+			if (!ComponentClasses.emplace(ComponentJson["Name"].get<FString>(), ComponentClass).second)
+				return false;
+			if (ComponentJson.contains("AttachParent") && !ComponentJson["AttachParent"].is_null())
+			{
+				if (!ComponentClass->IsChildOf(USceneComponent::StaticClass()) ||
+					!ComponentJson["AttachParent"].is_string())
+					return false;
+				Parents.emplace(ComponentJson["Name"].get<FString>(), ComponentJson["AttachParent"].get<FString>());
+			}
+		}
+		for (const auto& [Name, Parent] : Parents)
+		{
+			auto Found = ComponentClasses.find(Parent);
+			if (Found == ComponentClasses.end() || !Found->second->IsChildOf(USceneComponent::StaticClass()))
+				return false;
+			FString Current = Name;
+			for (size_t Depth = 0; Parents.contains(Current); ++Depth)
+			{
+				if (Depth >= ComponentClasses.size())
+					return false;
+				Current = Parents.at(Current);
+			}
+		}
+		if (ActorJson.contains("RootComponent") && !ActorJson["RootComponent"].is_null())
+		{
+			if (!ActorJson["RootComponent"].is_string())
+				return false;
+			const FString Root = ActorJson["RootComponent"].get<FString>();
+			auto Found = ComponentClasses.find(Root);
+			if (Found == ComponentClasses.end() || !Found->second->IsChildOf(USceneComponent::StaticClass()) ||
+				Parents.contains(Root))
+				return false;
+		}
 	}
 
-	if (!Json.contains("Actors") || !Json["Actors"].is_array())
-		return false;
-
 	World->ClearWorld();
-
-	// 3. 실제 생성
 	for (json& ActorJson : Json["Actors"])
 	{
-		if (!ActorJson.is_object())
-			return false;
-		if (!ActorJson.contains("Class") || !ActorJson["Class"].is_string())
-			return false;
-
 		UClass* Class = FindClass(ActorJson["Class"].get<FString>());
-		if (!Class || !Class->IsChildOf(AActor::StaticClass()))
-			return false;
-
 		AActor* Actor = World->SpawnActor(Class);
 		if (!Actor)
-		{
-			HTR_LOG(Warning, "Load: failed to spawn {}", ActorJson["Class"].get<FString>());
-			continue;
-		}
+			return false;
+		if (ActorJson.contains("Name") && ActorJson["Name"].is_string())
+			Actor->SetName(FName(ActorJson["Name"].get<FString>()));
 		Actor->Serialize(ActorJson["Properties"], true);
-
-		for (json& ComponentJson : ActorJson["Components"])       // json → json&
+		TArray<FActorComponentDescriptor> Descriptors;
+		for (const json& ComponentJson : ActorJson["Components"])
+			Descriptors.Add(
+				{FName(ComponentJson["Name"].get<FString>()), FindClass(ComponentJson["Class"].get<FString>())});
+		const TArray<UActorComponent*> Components = ReconstructActorComponents(Actor, Descriptors);
+		TMap<FString, UActorComponent*> ComponentMap;
+		for (int32 Index = 0; Index < Components.Num(); ++Index)
 		{
-			const FName Name(ComponentJson["Name"].get<FString>());
+			if (!Components[Index])
+				return false;
+			ComponentMap.Add(Descriptors[Index].Name.ToString(), Components[Index]);
+			Components[Index]->Serialize(ActorJson["Components"][Index]["Properties"], true);
+		}
 
-			// 이름으로 컴포넌트 찾기
-			UActorComponent* Component = nullptr;
-			for (UActorComponent* C : Actor->GetComponents())
+		if (ActorJson.contains("RootComponent"))
+		{
+			if (!ActorJson["RootComponent"].is_null())
+				Actor->SetRootComponent(
+					Cast<USceneComponent>(*ComponentMap.Find(ActorJson["RootComponent"].get<FString>())));
+		}
+		else
+		{
+			// Version 2에는 계층 정보가 없다. 첫 SceneComponent를 루트로 복원한다.
+			for (UActorComponent* Component : Components)
 			{
-				if (C && C->GetFName() == Name)
+				if (USceneComponent* Scene = Cast<USceneComponent>(Component))
 				{
-					Component = C;
+					Actor->SetRootComponent(Scene);
 					break;
 				}
 			}
-
-			if (!Component)
-			{
-				HTR_LOG(Warning, "Load: {} has no component {}", Class->Name, Name.ToString());
-				continue;
-			}
-
-			if (Component->GetClass()->Name != ComponentJson["Class"].get<FString>())
-			{
-				HTR_LOG(Warning, "Load: component {} class mismatch", Name.ToString());
-				continue;
-			}
-
-			Component->Serialize(ComponentJson["Properties"], true);
 		}
+		for (int32 Index = 0; Index < Components.Num(); ++Index)
+		{
+			USceneComponent* Scene = Cast<USceneComponent>(Components[Index]);
+			if (!Scene)
+				continue;
+			const json& ComponentJson = ActorJson["Components"][Index];
+			if (ComponentJson.contains("AttachParent"))
+			{
+				if (!ComponentJson["AttachParent"].is_null())
+					Scene->SetupAttachment(
+						Cast<USceneComponent>(*ComponentMap.Find(ComponentJson["AttachParent"].get<FString>())));
+			}
+			else if (Scene != Actor->GetRootComponent())
+				Scene->SetupAttachment(Actor->GetRootComponent());
+		}
+		RegisterRestoredActorComponents(Actor);
 	}
-
-	//if (!Json.contains("NextUUID"))
-	//	return false;
-
-	//// 파일 검증이 끝난 뒤 Clear
-	//uint64 SavedNextUUID = Json["NextUUID"].get<uint64>();
-
-	//World->ClearScene();
-
-	//FEngineStatics::NextUUID = SavedNextUUID;
-
-	//if (!Json.contains("Primitives"))
-	//{
-	//	return true;
-	//}
-
-	//for (auto& [UUIDString, PrimitiveJson] : Json["Primitives"].items())
-	//{
-	//	uint64 UUID = std::stoull(UUIDString);
-
-	//	FTransform Transform;
-
-	//	if (PrimitiveJson.contains("Location"))
-	//	{
-	//		Transform.Location.X = PrimitiveJson["Location"][0].get<float>();
-	//		Transform.Location.Y = PrimitiveJson["Location"][1].get<float>();
-	//		Transform.Location.Z = PrimitiveJson["Location"][2].get<float>();
-	//	}
-
-	//	if (PrimitiveJson.contains("Rotation"))
-	//	{
-	//		Transform.Rotation.Roll = PrimitiveJson["Rotation"][0].get<float>();
-	//		Transform.Rotation.Pitch = PrimitiveJson["Rotation"][1].get<float>();
-	//		Transform.Rotation.Yaw = PrimitiveJson["Rotation"][2].get<float>();
-	//	}
-
-	//	if (PrimitiveJson.contains("Scale"))
-	//	{
-	//		Transform.Scale.X = PrimitiveJson["Scale"][0].get<float>();
-	//		Transform.Scale.Y = PrimitiveJson["Scale"][1].get<float>();
-	//		Transform.Scale.Z = PrimitiveJson["Scale"][2].get<float>();
-	//	}
-
-	//	if (!PrimitiveJson.contains("Type"))
-	//		continue;
-
-	//	FString TypeString = PrimitiveJson["Type"].get<FString>();
-
-	//	if (TypeString == "Other")
-	//		continue;
-
-	//	EPrimitiveType Type = FStringToPrimitiveType(TypeString);
-
-	//	AStaticMeshActor* Actor =
-	//		World->SpawnActor<AStaticMeshActor>("Test", &Transform);
-
-	//	if (!Actor)
-	//		continue;
-
-	//	Actor->SetPrimitiveType(Type);
-	//	Actor->SetUUID(UUID);
-	//}
-
-	//// SpawnActor하면서 증가했을 UUID를 저장 당시 값으로 복원
-	//FEngineStatics::NextUUID = SavedNextUUID;
+	World->GetScene().UpdateAllTransforms();
 
 	World->GetScene().BuildBVH();
 

@@ -37,12 +37,18 @@ DECLARE_CYCLE_STAT("Gather - Submit", STAT_GatherSubmit);
 
 UWorld::~UWorld()
 {
+	ClearWorld();
+	delete MainCamera;
+	MainCamera = nullptr;
+	for (ULevel* Level : Levels)
+		delete Level;
 }
 
 bool UWorld::Init(EWorldType InType)
 {
+	WorldType = InType;
 	// Spawn Actor로 카메라 생성하고 세팅하기
-	PersistentLevel = FObjectFactory::ConstructObject<ULevel>();
+	PersistentLevel = Cast<ULevel>(FObjectFactory::ConstructObject(ULevel::StaticClass(), this));
 
 	if (!PersistentLevel)
 	{
@@ -57,9 +63,6 @@ bool UWorld::Init(EWorldType InType)
 
 	//카메라 생성
 	CreateMainCamera();
-
-	// 월드 타입 설정 (Editor, Game, PIE 등)
-	WorldType = InType;
 
 	return true;
 }
@@ -92,36 +95,32 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 	for (UActorComponent* Component : NewActor->GetComponents())
 	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
-			Primitive->RegisterComponent();
-
-		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
-			Scene.AddExponentialHeightFog(Fog);
-
-		if (ULightComponent* Light = Cast<ULightComponent>(Component))
-		{
-			Scene.AddLight(Light);
-		}
-
+		Component->RegisterComponent();
 	}
 
 	// 4. Level->Actors에 등록
 	PersistentLevel->AddActor(NewActor);
 
 	// 5. PlayList에 추가
+	if (IsGameWorld())
 	BeginPlayList.Enqueue(NewActor);
+	else if (NewActor->bTickInEditor)
+		NewActor->RegisterAllActorTickFunctions(true);
 
 	return NewActor;
 }
 
 void UWorld::Tick(float DeltaTime)
 {
-	if (EWorldType::PIE == WorldType)
+	if (IsGameWorld() && !bHasEndedPlay)
 	{
+		if (!bHasBegunPlay)
+			BeginPlay();
 		while (!BeginPlayList.IsEmpty())
 		{
-			BeginPlayList.Peek()->BeginPlay();
+			AActor* Actor = BeginPlayList.Peek();
 			BeginPlayList.Dequeue();
+			Actor->BeginPlay();
 		}
 
 		{
@@ -135,7 +134,12 @@ void UWorld::Tick(float DeltaTime)
 			}
 		}
 	}
-	
+	else if (!IsGameWorld())
+	{
+		TickTaskManager.RunAllTickGroups(DeltaTime);
+
+	}
+
 	// PIE, Editor 상관 없이 무조건 실행되어야 함.
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
@@ -145,6 +149,7 @@ void UWorld::Tick(float DeltaTime)
 
 void UWorld::ClearWorld()
 {
+	EndPlay();
 	// BeginPlay 대기 중인 Actor 제거
 	while (!BeginPlayList.IsEmpty())
 	{
@@ -171,6 +176,7 @@ void UWorld::ClearWorld()
 		Level->ClearActors();
 	}
 
+	bHasEndedPlay = false;
 	if(PersistentLevel)
 		HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 }
@@ -471,7 +477,7 @@ void UWorld::CreateMainCamera()
 	if (MainCamera)
 		return;
 
-	MainCamera = FObjectFactory::ConstructObject<ACameraActor>();
+	MainCamera = Cast<ACameraActor>(FObjectFactory::ConstructObject(ACameraActor::StaticClass(), this));
 
 	if (!MainCamera)
 	{
@@ -484,6 +490,7 @@ void UWorld::CreateMainCamera()
 	MainCamera->GetCameraComponent()->SetRelativeLocation(FVector(-5.0f, -5.0f, 5.0f));
 
 	// 메인 카메라는 Level에 속하지 않아 BeginPlay를 거치지 않으므로 여기서 등록한다.
+	MainCamera->GetCameraComponent()->RegisterComponent();
 	MainCamera->RegisterAllActorTickFunctions(true);
 }
 
@@ -511,7 +518,7 @@ int32 UWorld::GetActorNum()
 
 bool UWorld::DestroyActor(AActor* Actor)
 {
-	if (!Actor)
+	if (!Actor || Actor->GetWorld() != this)
 		return false;
 
 	ULevel* Level = Actor->GetLevel();
@@ -538,24 +545,6 @@ bool UWorld::DestroyActor(AActor* Actor)
 	// 2. PathTracker에서 제거
 	PathTracker.OnObjectDestroyed(Actor);
 
-	//// 3. PrimitiveComponents에서 제거
-	//for (UActorComponent* Component : Actor->Components)
-	//{
-	//	UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component);
-
-	//	if (!Primitive)
-	//		continue;
-
-	//	for (int32 i = PrimitiveComponents.Num() - 1; i >= 0; --i)
-	//	{
-	//		if (PrimitiveComponents[i] == Primitive)
-	//		{
-	//			PrimitiveComponents.RemoveAt(i, 1);
-	//			break;
-	//		}
-	//	}
-	//}
-
 	// 4. Level의 Actors에서 제거
 	for (int32 i = Level->Actors.Num() - 1; i >= 0; --i)
 	{
@@ -569,24 +558,8 @@ bool UWorld::DestroyActor(AActor* Actor)
 	FString ActorName = Actor->GetName();
 	uint32 ActorUUID = Actor->GetUUID();
 
-	// 5. 프록시 제거
-	for (UActorComponent* Component : Actor->GetComponents())
-	{
-		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
-		{
-			Scene.RemovePrimitive(Primitive);
-		}
-		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
-		{
-			Scene.RemoveExponentialHeightFog(Fog);
-		}
-		if (ULightComponent* Light = Cast<ULightComponent>(Component))
-		{
-			Scene.RemoveLight(Light);
-		}
-	}
-
-	Actor->RegisterAllActorTickFunctions(false);
+	// EndPlay 이후 Actor 소멸자가 각 Component를 해제한다. Scene 제거는 OnUnregister에 맡긴다.
+	Actor->EndPlay();
 
 	// 6. Actor 삭제
 	delete Actor;
@@ -697,8 +670,25 @@ bool UWorld::LineTraceSingle(const FRay& WorldRay, FHitResult& OutHit,
 
 void UWorld::BeginPlay()
 {
+	if (!IsGameWorld() || bHasBegunPlay)
+		return;
+	bHasBegunPlay = true;
+	bHasEndedPlay = false;
+	while (!BeginPlayList.IsEmpty())
+	{
+		AActor* Actor = BeginPlayList.Peek();
+		BeginPlayList.Dequeue();
+		Actor->BeginPlay();
+	}
 }
 
 void UWorld::EndPlay()
 {
+	if (!bHasBegunPlay)
+		return;
+	bHasBegunPlay = false;
+	bHasEndedPlay = true;
+	for (ULevel* Level : Levels)
+		for (AActor* Actor : Level->GetActors())
+			Actor->EndPlay();
 }

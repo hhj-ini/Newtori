@@ -13,7 +13,7 @@ AParticleActor::AParticleActor()
 
 UParticleSubUVComponent* AParticleActor::GetParticleComponent() const
 {
-	return static_cast<UParticleSubUVComponent*>(RootComponent);
+	return FindComponentByClass<UParticleSubUVComponent>();
 }
 
 

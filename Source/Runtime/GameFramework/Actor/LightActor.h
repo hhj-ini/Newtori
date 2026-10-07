@@ -16,8 +16,8 @@ public:
 	ALightActor();
 	virtual ~ALightActor() override = default;
 
-	UBillboardComponent* GetBillboardComponent() const { return BillboardComponent; }
-	USpotLightComponent* GetSpotLightComponent() const { return SpotLightComponent; }
+	UBillboardComponent* GetBillboardComponent() const { return FindComponentByClass<UBillboardComponent>(); }
+	USpotLightComponent* GetSpotLightComponent() const { return FindComponentByClass<USpotLightComponent>(); }
 
 private:
 	// 클릭해서 고를 수 있어야 하므로 프리미티브인 빌보드를 루트로 둔다

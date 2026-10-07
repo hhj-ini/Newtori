@@ -14,7 +14,7 @@ public:
 	ATextRenderActor();
 	virtual ~ATextRenderActor();
 
-	inline UTextRenderComponent* GetTextRenderComponent() const { return TextRenderComponent; }
+	inline UTextRenderComponent* GetTextRenderComponent() const { return FindComponentByClass<UTextRenderComponent>(); }
 
 private:
 	UTextRenderComponent* TextRenderComponent;

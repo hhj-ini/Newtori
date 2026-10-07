@@ -1,4 +1,5 @@
 #include "EnginePCH.h"
+#include "Component/TextRenderComponent.h"
 #include "Actor.h"
 #include "Engine/World.h"
 #include "Engine/Level.h"
@@ -12,29 +13,53 @@ AActor::AActor()
 
 AActor::~AActor()
 {
+	EndPlay();
+	RegisterAllActorTickFunctions(false);
     TArray<UActorComponent*> ToDelete = Components;
     Components.Reset();
     RootComponent = nullptr;
 
     for (UActorComponent* Component : ToDelete)
     {
-        delete Component;
+		Component->DestroyComponent();
     }
 }
 
 void AActor::BeginPlay()
 {
-	//if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(RootComponent))
-	//{
-	//	World->AddPrimitive(Cast<UPrimitiveComponent>(RootComponent));
-	//}
+	if (bHasBegunPlay)
+		return;
+	bHasBegunPlay = true;
 
 	for (UActorComponent* Component : Components)
 	{
+		if (Component->IsRegistered() && !Component->HasBegunPlay())
 		Component->BeginPlay();
 	}
 
 	RegisterAllActorTickFunctions(true);
+}
+
+void AActor::EndPlay()
+{
+	RegisterAllActorTickFunctions(false);
+	if (!bHasBegunPlay)
+		return;
+	bHasBegunPlay = false;
+	for (UActorComponent* Component : Components)
+	{
+		if (Component->HasBegunPlay())
+			Component->EndPlay();
+	}
+}
+
+void AActor::OnPropertyChanged(const FProperty& Property)
+{
+	Super::OnPropertyChanged(Property);
+	if (Property.Name == "bTickInEditor" && World && !World->IsGameWorld())
+	{
+		RegisterAllActorTickFunctions(bTickInEditor);
+	}
 }
 
 void AActor::RegisterAllActorTickFunctions(bool bRegister)
@@ -54,40 +79,37 @@ void AActor::RegisterAllActorTickFunctions(bool bRegister)
 	Apply(PrimaryActorTick);
 	for (UActorComponent* Component : Components)
 	{
-		if (Component)
+		if (Component && (!bRegister || Component->IsRegistered()))
 			Apply(Component->PrimaryComponentTick);
 	}
 }
 
-UActorComponent* AActor::AddComponentByClass(UClass* Class)
+UActorComponent* AActor::AddComponentByClass(UClass* Class, USceneComponent* AttachParent)
 {
-    if (Class == nullptr) return nullptr;
-    if (!Class->IsChildOf(UActorComponent::StaticClass())) return nullptr;
+	if (!Class || !Class->Constructor || !Class->IsChildOf(UActorComponent::StaticClass())) return nullptr;
+	if (AttachParent && AttachParent->GetOwner() != this) return nullptr;
 
-    // 새 Component를 만들고 이 Actor를 Outer, Owner로 설정한다.
-    UActorComponent* Component = CastChecked<UActorComponent>(FObjectFactory::ConstructObject(Class, this));
-    AddOwnedComponent(Component);
+	// 생성과 소유권 설정을 먼저 완료한다.
+	UActorComponent* Component = Cast<UActorComponent>(FObjectFactory::ConstructObject(Class, this));
+	if (!Component) return nullptr;
+	AddOwnedComponent(Component);
 
-    // 위치를 가지는 SceneComponent라면 Actor의 Transform 계층에 붙인다.
-    USceneComponent* SceneComponent = Cast<USceneComponent>(Component);
-    if (SceneComponent)
-    {
-        USceneComponent* Root = GetRootComponent();
-        if (Root)
-        {
-            SceneComponent->SetupAttachment(Root);
-        }
-        else
-        {
-            SetRootComponent(SceneComponent);
-        }
-    }
+	// 최종 부모를 등록 전에 정한다. Particle 등 OnRegister/BeginPlay가 위치를 읽기 때문이다.
+	if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+	{
+		if (RootComponent)
+		{
+			SceneComponent->SetupAttachment(AttachParent ? AttachParent : RootComponent);
+		}
+		else
+		{
+			SetRootComponent(SceneComponent);
+		}
+	}
 
-    // Component를 World에서 사용할 수 있게 등록한다.
-    // PrimitiveComponent라면 이 과정에서 Render Scene에도 추가된다.
-    Component->RegisterComponent();
-
-    return Component;
+	// 등록은 Scene과 재생 중인 World의 생명주기 연결까지 담당한다.
+	Component->RegisterComponent();
+	return Component;
 }
 
 void AActor::AddOwnedComponent(UActorComponent* Component)
@@ -104,8 +126,24 @@ void AActor::AddOwnedComponent(UActorComponent* Component)
     Components.Add(Component);
 }
 
+UTextRenderComponent* AActor::GetUUIDTextComponent()
+{
+	if (!UUIDTextComponent)
+	{
+		UUIDTextComponent = Cast<UTextRenderComponent>(
+			FObjectFactory::ConstructObject(UTextRenderComponent::StaticClass(), this, FName("ActorUUID")));
+		UUIDTextComponent->SetFlags(EObjectFlags::RF_Transient);
+		AddOwnedComponent(UUIDTextComponent);
+		UUIDTextComponent->SetTextSize(0.5f);
+	}
+	UUIDTextComponent->SetText("UUID : " + std::to_string(GetUUID()));
+	return UUIDTextComponent;
+}
+
 void AActor::RemoveOwnedComponent(UActorComponent* Component)
 {
+	if (Component == UUIDTextComponent)
+		UUIDTextComponent = nullptr;
     Component->UnregisterComponent();
 
     for (uint32 i = 0; i < Components.Num(); ++i)
@@ -132,16 +170,6 @@ FVector AActor::GetActorLocation() const
     return FVector::ZeroVector;
 }
 
-//FRotator AActor::GetActorRotation() const
-//{
-//    if (RootComponent)
-//    {
-//        // USceneComponent의 GetWorldRotation() 호출
-//        return RootComponent->GetWorldRotation();
-//    }
-//    return FRotator::ZeroRotator;
-//}
-
 FVector AActor::GetActorScale3D() const
 {
     if (RootComponent)
@@ -150,15 +178,6 @@ FVector AActor::GetActorScale3D() const
     }
     return FVector::OneVector;
 }
-
-//FQuat AActor::GetActorQuat() const
-//{
-//    if (RootComponent)
-//    {
-//        return FQuat(RootComponent->GetWorldRotation());
-//    }
-//    return FQuat::Identity;
-//}
 
 FTransform AActor::GetActorTransform() const
 {
@@ -169,8 +188,6 @@ FTransform AActor::GetActorTransform() const
             RootComponent->GetWorldLocation(),
             RootComponent->GetWorldScale3D()
         );
-
-        // return FTransform(RootComponent->GetWorldMatrix());
     }
     return FTransform::Identity;
 }

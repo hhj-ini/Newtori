@@ -6,6 +6,8 @@
 void URotatingMovementComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
+	if (!ResolveUpdatedComponent())
+		return;
 
 	// Compute new rotation
 	const FQuat OldRotation = UpdatedComponent->GetRelativeRotationQuat();

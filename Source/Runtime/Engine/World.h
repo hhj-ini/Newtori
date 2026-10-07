@@ -94,6 +94,8 @@ public:
 
 	void BeginPlay();
 	void EndPlay();
+	bool HasBegunPlay() const { return bHasBegunPlay; }
+	bool IsGameWorld() const { return WorldType == EWorldType::PIE || WorldType == EWorldType::Game; }
 
 	FScene& GetScene() { return Scene; }
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
@@ -140,5 +142,7 @@ private:
 	FRenderStats RenderStats;
 
 	// 월드타입 저장변수
-	EWorldType WorldType;
+	EWorldType WorldType = EWorldType::Editor;
+	bool bHasBegunPlay = false;
+	bool bHasEndedPlay = false;
 };

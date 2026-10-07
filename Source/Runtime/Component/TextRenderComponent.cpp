@@ -26,6 +26,13 @@ void UTextRenderComponent::TickComponent(float DeltaTime)
 	Super::TickComponent(DeltaTime);
 }
 
+void UTextRenderComponent::Render(
+	FTextRenderer& Renderer, const FMatrix& WorldMatrix, const FMatrix& ViewProjection) const
+{
+	if (Font && IsVisible())
+		Renderer.OnRender(Text, WorldMatrix, GetTextSize(), *Font, ViewProjection);
+}
+
 const FStaticMeshData* UTextRenderComponent::GetMeshData() const
 {
 	if (!Font) return nullptr;

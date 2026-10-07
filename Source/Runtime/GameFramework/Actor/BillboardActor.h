@@ -10,7 +10,7 @@ public:
 	ABillboardActor();
 	virtual ~ABillboardActor();
 
-	inline UBillboardComponent* GetBillboardComponent() const { return BillboardComponent; };
+	inline UBillboardComponent* GetBillboardComponent() const { return FindComponentByClass<UBillboardComponent>(); };
 private:
 	UBillboardComponent* BillboardComponent;
 };

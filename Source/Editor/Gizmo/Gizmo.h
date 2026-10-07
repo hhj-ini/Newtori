@@ -23,7 +23,7 @@ class FGizmo   // 상태 + 로직
 {
 public:
 	// Gizmo 대상 설정
-	void SetTarget(USceneComponent* InTarget) { Target = InTarget; }
+	void SetTarget(USceneComponent* InTarget) { EndDrag(); HoveredAxis = -1; Target = InTarget; }
 	USceneComponent* GetTarget() const { return Target; }
 
 	// Gizmo 모드(이동, 회전, 크기)
@@ -54,8 +54,8 @@ public:
 	float ComputeAngleOnPlane(const FVector& Point, int Axis) const;
 
 	inline FTransform GetTransform() const { return Target ? Target->GetTransform() : FTransform(); }
-	inline FVector GetLocation() const { return Target ? Target->GetRelativeLocation() : FVector(0, 0, 0); }
-	inline FRotator GetRotation() const { return Target ? Target->GetRelativeRotation() : FRotator(0, 0, 0); }
+	inline FVector GetLocation() const { return Target ? Target->GetWorldLocation() : FVector(0, 0, 0); }
+	inline FRotator GetRotation() const { return Target ? Target->GetWorldRotation() : FRotator(0, 0, 0); }
 	inline FVector GetScale() const { return Target ? Target->GetRelativeScale3D() : FVector(0, 0, 0); }
 
 	FVector GetRenderLocation() const;

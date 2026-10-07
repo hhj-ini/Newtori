@@ -7,6 +7,11 @@
 #include "Component/PrimitiveComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TextRenderComponent.h"
+#include "Component/ParticleSubUVComponent.h"
+#include "Component/SpotLightComponent.h"
+#include "Component/PointLightComponent.h"
+#include "Component/RotatingMovementComponent.h"
+#include "Component/ProjectileMovementComponent.h"
 #include "Asset/AssetManager.h"
 #include "Render/Material.h"
 #include "Render/Texture2D.h"
@@ -21,7 +26,7 @@ namespace
 	{
 		bool isValueChanged = false;
 
-		float lineHeight = GImGui->Font->LegacySize + GImGui->Style.FramePadding.y * 2.0f;
+		float lineHeight = ImGui::GetFrameHeight();
 		ImVec4 color(_color.X, _color.Y, _color.Z, _color.W);
 		ImVec2 buttonSize = { lineHeight + 2.0f , lineHeight };
 
@@ -543,8 +548,17 @@ namespace
 		const FString Label = "##" + Property.Name;
 		bool bIsChanged = false;
 
-		ImGui::Text(Property.Name.c_str());
-		ImGui::SameLine(120.0f);
+		// 좁은 패널에서는 라벨과 입력을 두 줄로 배치한다. 고정 X 좌표는 사용하지 않는다.
+		const char* DisplayName = Property.Name == "bTickInEditor" ? "Tick in Editor" : Property.Name.c_str();
+		const float RowStart = ImGui::GetCursorPosX();
+		const float AvailableWidth = ImGui::GetContentRegionAvail().x;
+		const float LabelWidth = AvailableWidth * 0.45f;
+		const bool bInline = Property.Type != EPropertyType::Transform && AvailableWidth >= 260.0f &&
+							 ImGui::CalcTextSize(DisplayName).x < LabelWidth;
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextWrapped("%s", DisplayName);
+		if (bInline)
+		ImGui::SameLine(RowStart + LabelWidth);
 		ImGui::SetNextItemWidth(-1.0f);
 
 		switch (Property.Type)
@@ -570,11 +584,15 @@ namespace
 		}
 
 		case EPropertyType::Int:
-			ImGui::DragInt(Label.c_str(), static_cast<int*>(ValuePtr), 1.0f);
+			bIsChanged = ImGui::DragInt(Label.c_str(), static_cast<int*>(ValuePtr), 1.0f);
 			break;
 
 		case EPropertyType::Bool:
-			ImGui::Checkbox(Label.c_str(), static_cast<bool*>(ValuePtr));
+			bIsChanged = ImGui::Checkbox(Label.c_str(), static_cast<bool*>(ValuePtr));
+			if (Property.Name == "bTickInEditor" && ImGui::IsItemHovered())
+			{
+				ImGui::SetTooltip("Allow this Actor and its tick-capable components to tick in the Editor. Does not start BeginPlay.");
+			}
 			break;
 
 		case EPropertyType::Vector:
@@ -600,7 +618,7 @@ namespace
 		case EPropertyType::Vector4:
 		{
 			FVector4* Value = static_cast<FVector4*>(ValuePtr);
-			ImGui::DragFloat4(Label.c_str(), &Value->X, 0.1f);
+			bIsChanged = ImGui::DragFloat4(Label.c_str(), &Value->X, 0.1f);
 			break;
 		}
 
@@ -621,6 +639,7 @@ namespace
 			if (ImGui::InputText(Label.c_str(), Buffer, sizeof(Buffer)))
 			{
 				*Value = Buffer;
+				bIsChanged = true;
 			}
 			if (CustomFont) ImGui::PopFont();
 			break;
@@ -642,6 +661,61 @@ namespace
 			if (Property.Class == UMaterial::StaticClass())
 			{
 				DrawTextureSlot(reinterpret_cast<UMaterial**>(ObjPtr), 0);
+			}
+			else if (Property.Class == UTexture2D::StaticClass())
+			{
+				UTexture2D** Texture = reinterpret_cast<UTexture2D**>(ObjPtr);
+				ImGui::BeginGroup();
+
+				// Content Drawer의 텍스처만 받는다. Sprite 변경은 아래 공통 변경 알림을 거친다.
+				const float ThumbnailSize = std::min(64.0f, ImGui::GetContentRegionAvail().x);
+				if (*Texture && (*Texture)->GetResource())
+				{
+					const float MaxDimension = static_cast<float>(std::max((*Texture)->GetWidth(), (*Texture)->GetHeight()));
+					const ImVec2 Size(ThumbnailSize * (*Texture)->GetWidth() / MaxDimension,
+						ThumbnailSize * (*Texture)->GetHeight() / MaxDimension);
+					ImGui::Image((*Texture)->GetResource()->GetSRV(), Size);
+				}
+				else
+					ImGui::Button("Drop Texture", ImVec2(ThumbnailSize, ThumbnailSize));
+
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Texture))
+					{
+						if (Payload->DataSize == sizeof(UTexture2D*))
+						{
+							*Texture = *static_cast<UTexture2D* const*>(Payload->Data);
+							bIsChanged = true;
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
+
+				const FString Preview = *Texture ? GetAssetDisplayName((*Texture)->GetPath()) : "None";
+				ImGui::SetNextItemWidth(-1.0f);
+				if (ImGui::BeginCombo(Label.c_str(), Preview.c_str()))
+				{
+					if (ImGui::Selectable("None", !*Texture))
+					{
+						*Texture = nullptr;
+						bIsChanged = true;
+					}
+					for (TObjectIterator<UTexture2D> It; It; ++It)
+					{
+						if (It->GetPath().empty()) continue;
+						ImGui::PushID(*It);
+						if (ImGui::Selectable(GetAssetDisplayName(It->GetPath()).c_str(), *Texture == *It))
+						{
+							*Texture = *It;
+							bIsChanged = true;
+						}
+						ImGui::PopID();
+					}
+					ImGui::EndCombo();
+				}
+				if (*Texture && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", (*Texture)->GetPath().c_str());
+				ImGui::EndGroup();
 			}
 			else if (Property.Class == UFont::StaticClass())
 			{
@@ -698,6 +772,8 @@ namespace
 			ImGui::PushID(Class->Name.c_str());
 			for (const FProperty& Property : Class->GetProperties())
 			{
+				// SubUV 입자는 Sprite 대신 Atlas 머티리얼을 사용한다. 무효한 Sprite 속성은 표시하지 않는다.
+				if (Object->IsA<UParticleSubUVComponent>() && Property.Name == "Sprite") continue;
 				DrawProperty(Object, Property, CustomFont);
 			}
 			ImGui::PopID();
@@ -712,6 +788,15 @@ FDetailsPanel::~FDetailsPanel()
 
 bool FDetailsPanel::Init()
 {
+	// Add 창을 열기 전에도 저장된 컴포넌트 클래스를 로더가 찾을 수 있어야 한다.
+	UBillboardComponent::StaticClass();
+	UParticleSubUVComponent::StaticClass();
+	USpotLightComponent::StaticClass();
+	UPointLightComponent::StaticClass();
+	URotatingMovementComponent::StaticClass();
+	UProjectileMovementComponent::StaticClass();
+	UExponentialHeightFogComponent::StaticClass();
+
 	ImGuiIO& io = ImGui::GetIO();
 
 	io.Fonts->AddFontDefault();
@@ -730,6 +815,25 @@ void FDetailsPanel::Tick(float DeltaTime)
 {
 }
 
+void FDetailsPanel::SetActor(AActor* InActor)
+{
+	TargetActor = InActor;
+	SelectedComponent = nullptr;
+
+	// 선택 전환 뒤 이전 Actor의 트리/드래그 요청을 사용하지 않는다.
+	ComponentToExpandNextFrame = nullptr;
+	PendingDraggedComponent = nullptr;
+	PendingAttachParent = nullptr;
+}
+
+void FDetailsPanel::SelectComponent(UActorComponent* Component)
+{
+	if (Component && Component->GetOwner() != TargetActor) return;
+
+	SelectedComponent = Component;
+	if (ComponentSelectionCallback) ComponentSelectionCallback(Component);
+}
+
 void FDetailsPanel::OnRender()
 {
 	const float ContentGap = ImGui::GetStyle().ItemSpacing.y;
@@ -739,11 +843,8 @@ void FDetailsPanel::OnRender()
 
 	ImGui::Begin("Details");
 
-	if (Target)
+	if (TargetActor)
 	{
-		// 현재 선택된 액터의 프로퍼티를 표시한다.
-		DrawProperties(Target->GetOwner(), CustomFont);
-
 		// Component 목록 헤더와 Add Component 버튼
 		ImGui::TextUnformatted("Components");
 		ImGui::SameLine();
@@ -761,6 +862,7 @@ void FDetailsPanel::OnRender()
 		ImGui::SetNextWindowSizeConstraints(ImVec2(220.0f, 0.0f),ImVec2(320.0f, 400.0f));
 		if (ImGui::BeginPopup("AddComponentPopup"))
 		{
+			// 클래스 등록이 최초 Actor 생성 여부에 좌우되지 않도록 지원 타입을 준비한다.
 			TArray<UClass*> ComponentClasses;
 			GetDerivedClasses(UActorComponent::StaticClass(), ComponentClasses);
 
@@ -773,24 +875,18 @@ void FDetailsPanel::OnRender()
 				{
 					USceneComponent* AttachParent = Cast<USceneComponent>(SelectedComponent);
 
-					if (AActor* Owner = Target->GetOwner())
+					if (AActor* Owner = TargetActor)
 					{
-						UActorComponent* NewComponent = Owner->AddComponentByClass(Class);
+						UActorComponent* NewComponent = Owner->AddComponentByClass(Class, AttachParent);
 
 						if (NewComponent)
 						{
 							if (USceneComponent* NewSceneComponent = Cast<USceneComponent>(NewComponent)) 
 							{
-								// SceneComponent를 선택한 상태에서 추가했으면 그 밑으로 이동
-								if (AttachParent)
-								{
-									NewSceneComponent->SetupAttachment(AttachParent);
-								}
-
 								// 실제 최종 부모를 펼침
 								ComponentToExpandNextFrame = NewSceneComponent->GetAttachParent();
 							}
-							SelectedComponent = NewComponent;
+							SelectComponent(NewComponent);
 						}
 						ImGui::CloseCurrentPopup();
 					}
@@ -801,11 +897,11 @@ void FDetailsPanel::OnRender()
 
 		ImGui::Dummy(ImVec2(0.0f, ContentGap));
 
-		if (AActor* Owner = Target->GetOwner())
+		if (AActor* Owner = TargetActor)
 		{
 			// SceneComponent의 Attachment 관계를 기준으로 Component Tree를 표시한다.
 			// SceneComponent가 아닌 Component는 최상위 항목으로 표시한다.
-			if (ImGui::BeginChild("ComponentTree", ImVec2(0.0f, 120.0f), ImGuiChildFlags_Borders))
+			if (ImGui::BeginChild("ComponentTree", ImVec2(0.0f, 240.0f), ImGuiChildFlags_Borders))
 			{
 				DrawComponentTree(Owner);
 			}
@@ -816,17 +912,24 @@ void FDetailsPanel::OnRender()
 			ImGui::Dummy(ImVec2(0.0f, ContentGap));
 
 			// Component Tree에서 선택된 Component의 프로퍼티를 표시한다.
-			if (SelectedComponent)
+			UActorComponent* PropertyTarget = SelectedComponent ? SelectedComponent : Owner->GetRootComponent();
+			if (PropertyTarget)
 			{
-				DrawProperties(SelectedComponent, CustomFont);
+				DrawProperties(PropertyTarget, CustomFont);
 
 				// MeshComponent는 Reflection 프로퍼티 외에 Material Slot UI도 추가로 표시한다.
-				if (UMeshComponent* MeshComponent = Cast<UMeshComponent>(SelectedComponent))
+				if (UMeshComponent* MeshComponent = Cast<UMeshComponent>(PropertyTarget))
 				{
 					DrawMaterialSlots(MeshComponent);
 				}
 			}
 			ImGui::Dummy(ImVec2(0.0f, SectionGap));
+
+			// 컴포넌트 속성과 Actor 전체에 적용되는 속성을 구분한다.
+			if (ImGui::CollapsingHeader("Actor", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				DrawProperties(Owner, CustomFont);
+			}
 		}
 	}
 	ImGui::End();
@@ -844,6 +947,8 @@ void FDetailsPanel::DrawComponentTree(AActor* Owner)
 
 	for (UActorComponent* Component : Owner->GetComponents())
 	{
+		if (Component->HasAnyFlags(EObjectFlags::RF_Transient))
+			continue;
 		if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
 		{
 			// Root 재귀에서 못 잡는 독립 SceneComponent
@@ -862,7 +967,7 @@ void FDetailsPanel::DrawComponentTree(AActor* Owner)
 
 			FString ComponentName = Component->GetFName().ToString();
 			bool bOpen = ImGui::TreeNodeEx(ComponentName.c_str(), Flags);
-			if (ImGui::IsItemClicked()) SelectedComponent = Component;
+			if (ImGui::IsItemClicked()) SelectComponent(Component);
 
 			ImGui::PopID();
 		}
@@ -910,7 +1015,7 @@ void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component)
 
 	FString ComponentName = Component->GetFName().ToString();
 	bool bOpen = ImGui::TreeNodeEx(ComponentName.c_str(), Flags);
-	if (ImGui::IsItemClicked()) SelectedComponent = Component;
+	if (ImGui::IsItemClicked()) SelectComponent(Component);
 	
 	if (ImGui::BeginDragDropSource())
 	{

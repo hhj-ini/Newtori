@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "Editor/Outliner/OutlinerPanel.h"
 
 #include "Engine/Level.h"
@@ -54,20 +54,6 @@ void FOutlinerPanel::DrawActors(ULevel* Level)
 
     const TArray<AActor*>& Actors = Level->GetActors();
 
-    struct FActorGroup
-    {
-        EPrimitiveType Type;
-        const char* Name;
-    };
-
-    const FActorGroup Groups[] =
-    {
-        { EPrimitiveType::Sphere, "Sphere" },
-        { EPrimitiveType::Cube,   "Cube" },
-        { EPrimitiveType::Cone,   "Cone" },
-        { EPrimitiveType::Plane,  "Plane" }
-    };
-
     ImGuiListClipper Clipper;
 	Clipper.Begin(Actors.Num(), ImGui::GetTextLineHeightWithSpacing());
 
@@ -81,11 +67,7 @@ void FOutlinerPanel::DrawActors(ULevel* Level)
 		}
     }
 
-    if (PendingDeleteActor)
-    {
-        DeleteActorCallback(PendingDeleteActor);
-        PendingDeleteActor = nullptr;
-    }
+
 }
 
 // Actor를 ImGui TreeNode로 출력
@@ -126,6 +108,15 @@ void FOutlinerPanel::DrawActorNode(AActor* Actor)
     
 }
 
+void FOutlinerPanel::SetWorld(UWorld* InWorld)
+{
+    if (World == InWorld) return;
+
+    World = InWorld;
+    PendingDeleteActor = nullptr;
+    SelectActor(nullptr);
+}
+
 // 선택 Object 변경
 void FOutlinerPanel::SelectActor(AActor* Actor)
 {
@@ -139,18 +130,17 @@ void FOutlinerPanel::SelectActor(AActor* Actor)
         return;
     }
 
+    if (Actor->GetWorld() != World) return;
     SelectedObject = Actor;
 
     HTR_LOG(Info, "{} UUID {} is selected", SelectedObject->GetName(), SelectedObject->GetUUID());
 
-    UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Actor->GetRootComponent());
-
     if (Callback)
-        Callback(Actor->GetRootComponent());
+        Callback(Actor);
 }
 
 
 AActor* FOutlinerPanel::GetSelectedActor() const
 {
-    return Cast<AActor>(SelectedObject);
+    return SelectedObject;
 }
