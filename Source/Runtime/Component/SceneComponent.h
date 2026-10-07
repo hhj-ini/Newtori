@@ -31,6 +31,12 @@ public:
 		MarkTransformDirty();
 	}
 
+	void SetRelativeRotationFromQuat(const FQuat& InQuat)
+	{
+		Transform.Rotation = InQuat.ToFRotator();
+		MarkTransformDirty();
+	}
+
 	const FVector& GetRelativeScale3D() const { return Transform.Scale; }
 	void SetRelativeScale3D(const FVector& InScale) 
 	{
