@@ -44,6 +44,7 @@ void FSettingsPanel::OnRender()
 	ImGui::Checkbox("Show Object UUID", &Settings.bShowUUID);
 	// 체크 상태는 다음 렌더링에서 FXAA 활성화 여부로 전달된다.
 	ImGui::Checkbox("Enable FXAA", &Settings.bEnableFXAA);
+	ImGui::Checkbox("Show Fog", &Settings.bShowFog);
 
 	//////////////////////////////////////////////////////////
 
@@ -115,6 +116,7 @@ bool FSettingsPanel::SaveSettings() const
 	File << "[Rendering]\n";
 	File << "Wireframe=" << Settings.bWireframe << "\n";
 	File << "DrawPrimitives=" << Settings.bDrawPrimitives << "\n";
+	File << "ShowFog=" << Settings.bShowFog << "\n"; 
 	File << "DrawBoundingBox=" << Settings.bDrawBoundingBox << "\n";
 	File << "ShowUUID=" << Settings.bShowUUID << "\n";
 	File << "DrawBatchLine=" << Settings.bDrawBatchLine << "\n";
@@ -235,6 +237,7 @@ bool FSettingsPanel::LoadSettings()
                 }
                 if (Key == "Wireframe") Settings.bWireframe = std::stoi(ValueStr);
 				else if (Key == "DrawPrimitives") Settings.bDrawPrimitives = std::stoi(ValueStr);
+				else if (Key == "ShowFog") Settings.bShowFog = std::stoi(ValueStr) != 0;   
 				else if (Key == "DrawBoundingBox") Settings.bDrawBoundingBox = std::stoi(ValueStr);
 				else if (Key == "ShowUUID") Settings.bShowUUID = std::stoi(ValueStr);
 				else if (Key == "DrawBatchLine") Settings.bDrawBatchLine = std::stoi(ValueStr);

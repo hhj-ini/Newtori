@@ -488,7 +488,9 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		}
 		RenderCommand::EndRenderPass(ViewRenderingInfo);
 
-		if (bDrawPrimitives && FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+		const bool bShowFog = SettingsPanel->GetSettings().bShowFog;
+
+		if (bDrawPrimitives && bShowFog && FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
 		{
 			const auto& Fogs = InWorld->GetScene().ExponentialFogs;
 			if (!Fogs.IsEmpty())
