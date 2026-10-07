@@ -57,7 +57,7 @@ FEngineConfig UEditorEngine::GetConfig() const
 	Desc.bCreateDepthBuffer = false;
 	Desc.bExitOnEscape = false;
 	// 파일이 없으면 검은 배경에 상태 텍스트만 표시된다.
-	Desc.SplashImage = "Resources/Splash.png";
+	Desc.SplashImage = "Resources/GWJNS.png";
 	return Desc;
 }
 
