@@ -50,7 +50,7 @@ namespace
 FEngineConfig UEditorEngine::GetConfig() const
 {
 	FEngineConfig Desc;
-	Desc.Title = L"Hitori Engine";
+	Desc.Title = L"GWJNS Engine";
 	Desc.Width = 1920;
 	Desc.Height = 1080;
 	Desc.bBorderless = false;
@@ -59,7 +59,7 @@ FEngineConfig UEditorEngine::GetConfig() const
 	Desc.bCreateDepthBuffer = false;
 	Desc.bExitOnEscape = false;
 	// 파일이 없으면 검은 배경에 상태 텍스트만 표시된다.
-	Desc.SplashImage = "Resources/Splash.png";
+	Desc.SplashImage = "Resources/GWJNS.png";
 	return Desc;
 }
 
@@ -152,14 +152,14 @@ bool UEditorEngine::Init()
 
 	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(World);
-	OutlinerPanel->SetSelectionCallback(
-		[this](USceneComponent* Root)
-		{
-			Gizmo->SetTarget(Root);
-			Outline->SetTarget(Cast<UPrimitiveComponent>(Root));
-			DetailsPanel->SetTarget(Root);
-		}
-	);
+	OutlinerPanel->SetSelectionCallback([this](AActor* Actor)
+	{
+		ApplyActorSelection(Actor);
+	});
+	DetailsPanel->SetComponentSelectionCallback([this](UActorComponent* Component)
+	{
+		ApplyComponentSelection(Component);
+	});
 
 	OutlinerPanel->SetDeleteActorCallback(
 		[this](AActor* Actor)
@@ -209,6 +209,14 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 	FStatOverlay::Tick(DeltaTime);
 	EditorControlsPanel->FEditorControlsPanel::DeltaTime = DeltaTime;
 
+	// PIE 플레이 중에는 위젯을 숨기고, F8로 편집 시점에 전환한다.
+	if (bIsPlaying && !ImGui::GetIO().WantTextInput && FInputSystem::IsKeyPressed(EKeyCode::F8))
+	{
+		bIsEjected = !bIsEjected;
+		ViewportsPanel->SetPIEEditing(bIsEjected);
+		Gizmo->EndDrag();
+	}
+
 	if (!ImGui::GetIO().WantTextInput && FInputSystem::IsKeyPressed(EKeyCode::Delete))
 	{
 		UActorComponent* Component = DetailsPanel->GetSelectedComponent();
@@ -216,16 +224,14 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 		{
 			AActor* Owner = Component->GetOwner();
 
-			bool bWasRoot = false;
-			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
-			{
-				bWasRoot = Owner && Owner->GetRootComponent() == SceneComponent;
-			}
-			DetailsPanel->ClearSelectedComponent();
+			// 파괴 전에 선택을 참조하는 모든 패널과 위젯을 해제한다.
+			Gizmo->SetTarget(nullptr);
+			Outline->SetTarget(nullptr);
+			DetailsPanel->SetActor(nullptr);
 			Component->DestroyComponent();
 
 			// Root가 교체됐으므로 에디터가 들고 있는 Target도 새 Root로 갱신한다.
-			if (bWasRoot && Owner)
+			if (Owner)
 			{
 				OutlinerPanel->SelectActor(Owner);
 			}
@@ -298,13 +304,28 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 		{
 			continue;
 		}
+		// PIE에서는 복제 World만 실행해 Editor의 원본 Tick/미리보기 상태도 보존한다.
+		if (bIsPlaying && World->GetWorldType() != EWorldType::PIE) continue;
+
 		// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
 
-		// PIE 모드 에서만 Tick 호출
-		//if (EWorldType::PIE == World->GetWorldType())
 		{
 			SCOPE_CYCLE_COUNTER(STAT_WorldTick);
 			World->Tick(DeltaTime);
+		}
+
+		if (World == OutlinerPanel->GetWorld())
+		{
+			AActor* Actor = OutlinerPanel->GetSelectedActor();
+			if (Actor && World->GetPersistentLevel()->GetActors().Find(Actor) == INDEX_NONE)
+			{
+				ResetSceneSelection();
+			}
+			else if (Actor && DetailsPanel->GetSelectedComponent() &&
+				Actor->GetComponents().Find(DetailsPanel->GetSelectedComponent()) == INDEX_NONE)
+			{
+				DetailsPanel->ClearSelectedComponent();
+			}
 		}
 
 		{
@@ -312,7 +333,7 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 			MultipleViewportsAdapter.CaptureWorld(World);
 		}
 
-		if (!bIsPlaying)
+		if (CanEditViewport() && World == OutlinerPanel->GetWorld())
 		{
 			UpdateGizmoAndPicking(World);
 		}
@@ -430,12 +451,13 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 				InWorld->GetPathTracker().OnRender(LineBatcher.get());
 			}
 
-			// 선택된 액터가 라이트면 원뿔을 같이 쌓는다
-			if (Gizmo->GetTarget())
+			// 선택된 액터에 붙은 LightComponent를 표시한다. 액터 종류에 의존하지 않는다.
+			if (Gizmo->GetTarget() && CanEditViewport() && Gizmo->GetTarget()->GetOwner()->GetWorld() == InWorld)
 			{
-				if (ALightActor* LightActor = Cast<ALightActor>(Gizmo->GetTarget()->GetOwner()))
+				for (UActorComponent* Component : Gizmo->GetTarget()->GetOwner()->GetComponents())
 				{
-					LightActor->GetSpotLightComponent()->DrawDebug(LineBatcher.get());
+					if (USpotLightComponent* Light = Cast<USpotLightComponent>(Component))
+						Light->DrawDebug(LineBatcher.get());
 				}
 			}
 
@@ -543,16 +565,15 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		// TextRenderComponent 렌더링
 		for (TObjectIterator<UTextRenderComponent> TextComponent; TextComponent; ++TextComponent)
 		{
-			if (!TextComponent || !TextComponent->GetFont() || !TextComponent->IsVisible())
+			if (!TextComponent || TextComponent->HasAnyFlags(EObjectFlags::RF_Transient) ||
+				!TextComponent->IsRegistered() || !TextComponent->GetFont() || !TextComponent->IsVisible() ||
+				!TextComponent->GetOwner() || TextComponent->GetOwner()->GetWorld() != InWorld)
 			{
 				continue;
 			}
 
-			TextRenderer->OnRender(
-				TextComponent->GetText(),
+				TextComponent->Render(*TextRenderer,
 				TextComponent->GetWorldMatrix(),
-				TextComponent->GetTextSize(),
-				*TextComponent->GetFont(),
 				ViewProjection
 			);
 		}
@@ -613,12 +634,12 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 	RenderCommand::BeginRenderPass(OverlayInfo);
 	{
 		// 스텐실 기반이라 선택 대상의 가시성이 꺼져 있어도 외곽선만 그린다.
-		if (Outline->GetTarget() && !bIsPlaying)
+		if (CanEditViewport() && Outline->GetActor() && Outline->GetActor()->GetWorld() == InWorld)
 		{
 			OutlineRenderer->OnRender(*Outline, ViewProjection, ViewRenderingInfo.ViewportSetting);
 		}
 
-		if (Gizmo->GetTarget() && !bIsPlaying)
+		if (Gizmo->GetTarget() && CanEditViewport() && Gizmo->GetTarget()->GetOwner()->GetWorld() == InWorld)
 		{
 			RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
 
@@ -638,31 +659,21 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 				if (!Actor)
 					continue;
 
-				UPrimitiveComponent* Primitive =
-					Cast<UPrimitiveComponent>(Actor->GetRootComponent());
-
-				if (!Primitive)
-					continue;
-
-				FBox Box =
+				FVector UUIDLocation = Actor->GetActorLocation();
+				if (UPrimitiveComponent* Primitive =
+					Cast<UPrimitiveComponent>(Actor->GetRootComponent()))
+				{
+					const FBox Box =
 					Primitive->CalcBounds();
-
-				FVector UUIDLocation;
-				UUIDLocation.X = (Box.Min.X + Box.Max.X) * 0.5f;
-				UUIDLocation.Y = (Box.Min.Y + Box.Max.Y) * 0.5f;
-				UUIDLocation.Z = Box.Max.Z + 0.5f;
-
-				FString Text =
-					"UUID : " + std::to_string(Actor->GetUUID());
-
-				TextRenderer->BuildTextMesh(
-					Text,
-					0.5f,
-					*SystemFont
-				);
+					UUIDLocation = FVector((Box.Min.X + Box.Max.X) * 0.5f, (Box.Min.Y + Box.Max.Y) * 0.5f, Box.Max.Z);
+				}
+				UUIDLocation.Z += 0.5f;
+				UTextRenderComponent* UUIDText = Actor->GetUUIDTextComponent();
+				UUIDText->SetFont(SystemFont);
+				UUIDText->SetRelativeLocation(UUIDLocation);
 
 				const FMatrix BillboardWorld = MultipleViewportsAdapter.BuildEngineBillboardMatrix(ViewIndex, UUIDLocation, 1.0f, 1.0f);
-				TextRenderer->OnRender(Text, BillboardWorld, 0.5f, *SystemFont, ViewProjection);
+				UUIDText->Render(*TextRenderer, BillboardWorld, ViewProjection);
 			}
 		}
 	}
@@ -693,6 +704,10 @@ void UEditorEngine::PresentFrame()
 // ImGui를 정리한다. UObject 일괄 삭제와 공용 자원·Device 정리는 FEngineLoop가 이어서 한다.
 void UEditorEngine::PreExit()
 {
+	EndPIE();
+	ResetSceneSelection();
+	while (!WorldList.IsEmpty())
+		DeleteWorldContext(WorldList.Last().get());
 	// Todo: Post process
 	PostProcessConstantBuffer.reset();
 	//
@@ -711,66 +726,133 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 	Actor->Destroy();
 }
 
+void UEditorEngine::SetEditingWorld(UWorld* World)
+{
+	// 패널들은 같은 World를 편집한다. World 전환은 기존 선택 참조를 먼저 해제한다.
+	ResetSceneSelection();
+	OutlinerPanel->SetWorld(World);
+	DetailsPanel->SetWorld(World);
+	EditorControlsPanel->SetWorld(World);
+	SettingsPanel->SetWorld(World);
+}
+
+void UEditorEngine::ApplyActorSelection(AActor* Actor)
+{
+	DetailsPanel->SetActor(Actor);
+
+	// Actor 선택 시 Root를 조작하고 소유한 메시 전체를 강조한다. 빈 Actor도 Details에 남는다.
+	Gizmo->SetTarget(Actor ? Actor->GetRootComponent() : nullptr);
+	Outline->SetActor(Actor);
+}
+
+void UEditorEngine::SelectActorAndComponent(AActor* Actor, const FString& ComponentName)
+{
+	OutlinerPanel->SelectActor(Actor);
+	if (!Actor || ComponentName.empty()) return;
+
+	// World가 바뀌어도 같은 이름의 복제/원본 컴포넌트 선택을 이어간다.
+	for (UActorComponent* Component : Actor->GetComponents())
+	{
+		if (Component->GetName() == ComponentName)
+		{
+			DetailsPanel->SelectComponent(Component);
+			break;
+		}
+	}
+}
+
+void UEditorEngine::ApplyComponentSelection(UActorComponent* Component)
+{
+	AActor* Actor = OutlinerPanel->GetSelectedActor();
+	if (!Component)
+	{
+		Gizmo->SetTarget(Actor ? Actor->GetRootComponent() : nullptr);
+		Outline->SetActor(Actor);
+		return;
+	}
+
+	// 트리에서 컴포넌트를 고르면 위치를 가진 해당 컴포넌트만 조작한다.
+	Gizmo->SetTarget(Cast<USceneComponent>(Component));
+	Outline->SetTarget(Cast<UPrimitiveComponent>(Component));
+}
+
 void UEditorEngine::StartPIE()
 {
-	if (bIsPlaying)
-	{	// 중복 실행 방지
-		return;	
-	}
+	if (bIsPlaying) return;
+	FWorldContext* EditorContext = GetWorldContext(EWorldType::Editor);
+	if (!EditorContext || !EditorContext->CurrentWorld) return;
 
-	bIsPlaying = true;
-	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
-	if (!EditorWorld)
-	{
-		return;
-	}
+	UWorld* EditorWorld = EditorContext->CurrentWorld;
+	AActor* SelectedActor = OutlinerPanel->GetSelectedActor();
+	UActorComponent* SelectedComponent = DetailsPanel->GetSelectedComponent();
+	const FString ComponentName = SelectedComponent ? SelectedComponent->GetName() : FString();
 
+	// 복제에 성공한 뒤에만 패널과 View를 PIE로 전환한다.
 	UWorld* PIEWorld = FObjectDuplicator::DuplicateWorld(EditorWorld, EWorldType::PIE);
-	if (!PIEWorld)
+	if (!PIEWorld) return;
+	if (!CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld))
 	{
-		HTR_LOG(Error, "Failed to duplicate world for PIE");
+		delete PIEWorld;
 		return;
 	}
-	
-	FWorldContext* PIEContext = CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld);
 
-	uint32 ViewIndex = (MultipleViewportsAdapter.GetActiveViewIndex() == -1) ? 0 : MultipleViewportsAdapter.GetActiveViewIndex();
-	PIEIndex = ViewIndex;
-	MultipleViewportsAdapter.SetViewportWorld(ViewIndex, PIEWorld);
+	EditorToPIEActors.Empty();
+	PIEToEditorActors.Empty();
+	const auto& SourceActors = EditorWorld->GetPersistentLevel()->GetActors();
+	const auto& Copies = PIEWorld->GetPersistentLevel()->GetActors();
+	for (int32 Index = 0; Index < SourceActors.Num(); ++Index)
+	{
+		EditorToPIEActors.Add(SourceActors[Index], Copies[Index]);
+		PIEToEditorActors.Add(Copies[Index], SourceActors[Index]);
+	}
+
+	PIEIndex = MultipleViewportsAdapter.GetActiveViewIndex();
+	if (PIEIndex == static_cast<uint32>(-1)) PIEIndex = 0;
+	MultipleViewportsAdapter.SetViewportWorld(PIEIndex, PIEWorld);
+	SetEditingWorld(PIEWorld);
+	if (AActor** Copy = EditorToPIEActors.Find(SelectedActor))
+	{
+		SelectActorAndComponent(*Copy, ComponentName);
+	}
+
+	PIEWorld->GetMainCamera()->GetCameraComponent()->SetExternalInputManaged(true);
+	PIEWorld->BeginPlay();
+	bIsEjected = false;
+	ViewportsPanel->SetPIEEditing(false);
+	bIsPlaying = true;
 }
 
 void UEditorEngine::EndPIE()
 {
-	// PIE Play중이 아니면 아래 실행 X
-	if (!bIsPlaying || PIEIndex == -1)
-	{
-		return;
-	}
-	bIsPlaying = false;
 	FWorldContext* PIEContext = GetWorldContext(EWorldType::PIE);
-	if (!PIEContext)
+	if (!PIEContext && !bIsPlaying) return;
+	FWorldContext* EditorContext = GetWorldContext(EWorldType::Editor);
+	UWorld* EditorWorld = EditorContext ? EditorContext->CurrentWorld : nullptr;
+
+	AActor* RestoreActor = nullptr;
+	if (AActor** Source = PIEToEditorActors.Find(OutlinerPanel->GetSelectedActor())) RestoreActor = *Source;
+	UActorComponent* SelectedComponent = DetailsPanel->GetSelectedComponent();
+	const FString ComponentName = SelectedComponent ? SelectedComponent->GetName() : FString();
+
+	// 삭제할 PIE 객체를 참조하는 선택/패널/캡처를 먼저 Editor 쪽으로 전환한다.
+	SetEditingWorld(EditorWorld);
+	if (PIEIndex != static_cast<uint32>(-1))
+		MultipleViewportsAdapter.SetViewportWorld(PIEIndex, EditorWorld);
+	if (PIEContext)
 	{
-		return;
+		MultipleViewportsAdapter.ForgetWorld(PIEContext->CurrentWorld);
+		PIEContext->CurrentWorld->EndPlay();
+		DeleteWorldContext(PIEContext);
 	}
 
-	UWorld* PIEWorld = PIEContext->CurrentWorld;
-	if (!PIEWorld)
-	{
-		return;
-	}
-
-	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
-	if (!EditorWorld)
-	{
-		return;
-	}
-
-	MultipleViewportsAdapter.SetViewportWorld(PIEIndex, EditorWorld);
+	EditorToPIEActors.Empty();
+	PIEToEditorActors.Empty();
 	PIEIndex = -1;
-	PIEWorld->ClearWorld();
+	bIsPlaying = false;
+	bIsEjected = false;
+	ViewportsPanel->SetPIEEditing(false);
 
-	// 소멸
-	DeleteWorldContext(PIEContext);
+	SelectActorAndComponent(RestoreActor, ComponentName);
 }
 
 // 씬 변경으로 무효화된 에디터의 선택 참조를 모두 해제한다.
@@ -778,13 +860,14 @@ void UEditorEngine::ResetSceneSelection()
 {
 	Gizmo->SetTarget(nullptr);
 	Outline->SetTarget(nullptr);
-	DetailsPanel->SetTarget(nullptr);
+	DetailsPanel->SetActor(nullptr);
 	OutlinerPanel->SelectActor(nullptr);
 }
 
 // 새 씬 생성이 성공하면 에디터 선택 상태를 초기화한다.
 void UEditorEngine::CreateNewScene()
 {
+	EndPIE();
 	UWorld* World = nullptr;
 	for (UWorld* WorldPtr : MultipleViewportsAdapter.GetViewportWorlds())
 	{
@@ -805,6 +888,7 @@ void UEditorEngine::CreateNewScene()
 // 씬 불러오기가 성공하면 에디터 선택 상태를 초기화한다.
 void UEditorEngine::OpenScene()
 {
+	EndPIE();
 	UWorld* World = nullptr;
 	for (UWorld* WorldPtr : MultipleViewportsAdapter.GetViewportWorlds())
 	{
