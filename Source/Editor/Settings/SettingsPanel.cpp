@@ -42,6 +42,8 @@ void FSettingsPanel::OnRender()
 	ImGui::Checkbox("Draw Primitives", &Settings.bDrawPrimitives);
 	ImGui::Checkbox("Draw Bounding Box", &Settings.bDrawBoundingBox);
 	ImGui::Checkbox("Show Object UUID", &Settings.bShowUUID);
+	// 체크 상태는 다음 렌더링에서 FXAA 활성화 여부로 전달된다.
+	ImGui::Checkbox("Enable FXAA", &Settings.bEnableFXAA);
 
 	//////////////////////////////////////////////////////////
 

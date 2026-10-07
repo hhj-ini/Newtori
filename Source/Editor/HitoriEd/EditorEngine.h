@@ -90,15 +90,21 @@ private:
 	UFont* SystemFont;
 
 	// Todo: Post process
-	struct FPostProcessConstants
+	struct alignas(16) FPostProcessConstants
 	{
 		uint32 DisplayMode = 0;
 		float NearClip = 0.1f;
 		float FarClip = 10000.f;
 		uint32 IsOrthographic = 0;
+
+		uint32 EnableFXAA = 0;
+		float EdgeThreshold = 0.125f;
+		float EdgeThresholdMin = 0.0312f;
+		float SubpixelStrength = 0.75f;
 	};
 
-	//static_assert(sizeof(FPostProcessConstants) == 16);
+	// HLSL의 PostProcessConstants와 같은 크기인지 확인한다.
+	static_assert(sizeof(FPostProcessConstants) == 32);
 	FShaderProgram* PostProcessShader = nullptr;
 	TUniquePtr<FConstantBuffer> PostProcessConstantBuffer;
 	//

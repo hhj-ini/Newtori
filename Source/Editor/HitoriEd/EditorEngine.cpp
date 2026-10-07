@@ -184,7 +184,7 @@ bool UEditorEngine::Init()
 
 
 	// Todo: Post process
-	PostProcessShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/PostProcessTestShader.hlsl");
+	PostProcessShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/PostProcessShader.hlsl");
 	PostProcessConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FPostProcessConstants));
 
 	return true;
@@ -540,11 +540,15 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		// 실제 장면 렌더링에 사용한 투영 정보를 가져온다.
 		const FCameraProjection Projection = MultipleViewportsAdapter.GetRenderProjection(ViewIndex);
 
+		// 구조체의 기본값으로 FXAA 세부 설정도 초기화한다.
 		FPostProcessConstants PostProcessData{};
 		PostProcessData.DisplayMode = static_cast<uint32>(ViewportsPanel->GetDisplayMode(ViewIndex));
 		PostProcessData.NearClip = Projection.NearClip;
 		PostProcessData.FarClip = Projection.FarClip;
 		PostProcessData.IsOrthographic = (Projection.Mode == EProjectionMode::Orthographic) ? 1U : 0U;
+
+		// 체크하면 1(FXAA 적용), 체크를 해제하면 0(원본 장면 표시).
+		PostProcessData.EnableFXAA = SettingsPanel->GetSettings().bEnableFXAA ? 1U : 0U;
 
 		RenderCommand::UpdateBufferData(PostProcessConstantBuffer.get(), &PostProcessData, sizeof(PostProcessData));
 

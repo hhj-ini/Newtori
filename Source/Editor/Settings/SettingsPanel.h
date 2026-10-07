@@ -18,6 +18,8 @@ struct FEditorSettings
 	bool bShowUUID = false;
 	bool bDrawBatchLine = true;
 	bool bDrawPSGrid = false;
+	// 체크하면 FXAA를 적용한다. 시작할 때는 꺼짐.
+	bool bEnableFXAA = false;
 
 	// Values
 	float CameraSpeed = 1.0f;
