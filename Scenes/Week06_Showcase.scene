@@ -1,0 +1,390 @@
+{
+    "Version": 3,
+    "Actors": [
+        {
+            "Name": "01_StaticMesh",
+            "Class": "AStaticMeshActor",
+            "RootComponent": "StaticMeshComponent",
+            "Properties": {
+                "bTickInEditor": false
+            },
+            "Components": [
+                {
+                    "Name": "StaticMeshComponent",
+                    "Class": "UStaticMeshComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                3,
+                                0,
+                                1
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                2,
+                                2,
+                                2
+                            ]
+                        },
+                        "StaticMesh": "Cube",
+                        "bVisible": true,
+                        "OverrideMaterials": [
+                            {
+                                "Base": "DefaultMaterial",
+                                "BaseColor": [
+                                    0.8,
+                                    0.8,
+                                    0.8,
+                                    1
+                                ],
+                                "UVScrollSpeed": [
+                                    0,
+                                    0
+                                ],
+                                "SamplerState": "LinearClamp",
+                                "BlendState": "Opaque",
+                                "Unlit": false
+                            }
+                        ]
+                    }
+                },
+                {
+                    "Name": "RotatingMovementComponent",
+                    "Class": "URotatingMovementComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "RotationRate": [
+                            0,
+                            45,
+                            0
+                        ],
+                        "PivotTranslation": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "bRotationInLocalSpace": 1
+                    }
+                }
+            ]
+        },
+        {
+            "Name": "02_Particle",
+            "Class": "AParticleActor",
+            "RootComponent": "UParticleSubUVComponent",
+            "Properties": {
+                "bTickInEditor": false
+            },
+            "Components": [
+                {
+                    "Name": "UParticleSubUVComponent",
+                    "Class": "UParticleSubUVComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                6,
+                                2,
+                                0
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "ColSize": 8,
+                        "RowSize": 8,
+                        "FrameRate": 12.0,
+                        "bVisible": true
+                    }
+                }
+            ]
+        },
+        {
+            "Name": "03_Text",
+            "Class": "ATextRenderActor",
+            "RootComponent": "TextRenderComponent",
+            "Properties": {
+                "bTickInEditor": false
+            },
+            "Components": [
+                {
+                    "Name": "TextRenderComponent",
+                    "Class": "UTextRenderComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                1,
+                                0,
+                                3
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "Text": "WEEK 06",
+                        "TextSize": 0.5,
+                        "Font": "Assets/Fonts/CookieRun.json",
+                        "bVisible": true
+                    }
+                }
+            ]
+        },
+        {
+            "Name": "04_Light",
+            "Class": "ALightActor",
+            "RootComponent": "UBillboardComponent",
+            "Properties": {
+                "bTickInEditor": false
+            },
+            "Components": [
+                {
+                    "Name": "UBillboardComponent",
+                    "Class": "UBillboardComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                6,
+                                -3,
+                                1.5
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "Sprite": "Assets/Editor/Icon/SpotLight_64x.png",
+                        "bVisible": true
+                    }
+                },
+                {
+                    "Name": "USpotLightComponent",
+                    "Class": "USpotLightComponent",
+                    "AttachParent": "UBillboardComponent",
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "InnerConeAngle": 15.0,
+                        "OuterConeAngle": 30.0,
+                        "AttenuationRadius": 5.0,
+                        "Falloff": 1.0,
+                        "Intensity": 1.0,
+                        "LightColor": [
+                            1.0,
+                            1.0,
+                            0.6,
+                            1.0
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "Name": "05_HeightFog",
+            "Class": "AExponentialHeightFogActor",
+            "RootComponent": "UBillboardComponent",
+            "Properties": {
+                "bTickInEditor": false
+            },
+            "Components": [
+                {
+                    "Name": "UBillboardComponent",
+                    "Class": "UBillboardComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                9,
+                                4,
+                                0
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "Sprite": "Assets/Editor/Icon/Pawn_64x.png",
+                        "bVisible": true
+                    }
+                },
+                {
+                    "Name": "UExponentialHeightFogComponent",
+                    "Class": "UExponentialHeightFogComponent",
+                    "AttachParent": "UBillboardComponent",
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "FogDensity": 0.035,
+                        "FogHeightFalloff": 0.12,
+                        "StartDistance": 0.0,
+                        "FogCutoffDistance": 0.0,
+                        "FogMaxOpacity": 0.65,
+                        "FogInscatteringColor": [
+                            0.95,
+                            0.35,
+                            0.12,
+                            1.0
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "Name": "06_FireBall",
+            "Class": "APointLightActor",
+            "RootComponent": "StaticMeshComponent",
+            "Properties": {
+                "bTickInEditor": false
+            },
+            "Components": [
+                {
+                    "Name": "StaticMeshComponent",
+                    "Class": "UStaticMeshComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                3,
+                                -2,
+                                2
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                0.5,
+                                0.5,
+                                0.5
+                            ]
+                        },
+                        "StaticMesh": "Sphere",
+                        "bVisible": true,
+                        "OverrideMaterials": [
+                            {
+                                "Base": "DefaultMaterial",
+                                "BaseColor": [
+                                    1,
+                                    0.08,
+                                    0.02,
+                                    1
+                                ],
+                                "UVScrollSpeed": [
+                                    0,
+                                    0
+                                ],
+                                "SamplerState": "LinearClamp",
+                                "BlendState": "Opaque",
+                                "Unlit": true
+                            }
+                        ]
+                    }
+                },
+                {
+                    "Name": "PointLightComponent",
+                    "Class": "UPointLightComponent",
+                    "AttachParent": "StaticMeshComponent",
+                    "Properties": {
+                        "Transform": {
+                            "Location": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Rotation": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "Scale": [
+                                1,
+                                1,
+                                1
+                            ]
+                        },
+                        "Intensity": 6.0,
+                        "AttenuationRadius": 9.0,
+                        "LightColor": [
+                            1.0,
+                            0.22,
+                            0.05,
+                            1.0
+                        ]
+                    }
+                },
+                {
+                    "Name": "ProjectileMovementComponent",
+                    "Class": "UProjectileMovementComponent",
+                    "AttachParent": null,
+                    "Properties": {
+                        "InitialSpeed": 0.4,
+                        "MaxSpeed": 0.4
+                    }
+                }
+            ]
+        }
+    ]
+}
