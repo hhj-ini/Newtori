@@ -121,7 +121,8 @@ void FRenderer::UploadPerObjectConstants()
 	{
 		FRenderPacket& P = RenderPackets[Index];
 		const FMatrix& Model = GetPacketWorld(P);
-		std::memcpy(Dest + static_cast<size_t>(Index) * ObjectSlotBytes, &Model, sizeof(FMatrix));
+		FPerObjectConstants Constants = MakePerObjectConstants(Model);
+		std::memcpy(Dest + static_cast<size_t>(Index) * ObjectSlotBytes, &Constants, sizeof(Constants));
 		P.Slot = Index;
 	}
 
@@ -456,7 +457,7 @@ void FRenderer::UpdatePointLight(const FScene& Scene)
 		Constants.Position = Proxy.Position;
 		Constants.AttenuationRadius = Proxy.AttenuationRadius;
 		Constants.Intensity = Proxy.Intensity;
-		Constants.Color = FVector(Proxy.LightColor.X, Proxy.LightColor.Y, Proxy.LightColor.Z);
+		Constants.Color = FVector4(Proxy.LightColor.X, Proxy.LightColor.Y, Proxy.LightColor.Z, Proxy.LightColor.W);
 
 		break;
 	}
@@ -517,6 +518,7 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 		Params.BaseColor = RenderPacket.Material->BaseColor;
 		Params.UVOffset = RenderPacket.Material->UVScrollSpeed * TotalTime;
 		Params.bOpaque = RenderPacket.Material->BlendState == EBlendState::Opaque ? 1.0f : 0.0f;
+		Params.bUnlit = RenderPacket.Material->bUnlit ? 1.0f : 0.0f;
 
 		RenderCommand::UpdateBufferData(RenderPacket.Material->ParamBuffer.get(), &Params, sizeof(FStaticMeshMaterialParams));
 		RenderCommand::BindConstantBuffer(1, RenderPacket.Material->ParamBuffer.get(), EShaderBindFlagBits::Pixel);
@@ -552,6 +554,7 @@ void FRenderer::UpdatePerObjectConstants(const FMatrix& World)
 	FPerObjectConstants Constants;
 
 	Constants.World = World;
+	Constants.InverseTransposeWorld = World.GetTransposed().Inverse();
 
 	RenderCommand::UpdateBufferData(PerObjectCB.get(), &Constants);
 }

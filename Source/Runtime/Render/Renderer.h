@@ -15,8 +15,9 @@ struct alignas(16) FPointLightConstants
 	FVector Position;          // 12바이트
 	float AttenuationRadius;   //  4바이트
 
-	FVector Color;             // 12바이트
+	FVector4 Color;             // 16바이트
 	float Intensity;           //  4바이트
+	float padding[3];            // 12바이트
 };
 
 constexpr uint32 ObjectSlotBytes = 256;
@@ -24,7 +25,17 @@ constexpr uint32 ObjectSlotBytes = 256;
 struct FPerObjectConstants
 {
 	FMatrix World;
+	FMatrix InverseTransposeWorld;
 };
+
+// 비균등 스케일에 대응되는 normal 변환을 위해 World의 역행렬 전치 행렬
+inline FPerObjectConstants MakePerObjectConstants(const FMatrix& World)
+{
+	FPerObjectConstants Constants;
+	Constants.World = World;
+	Constants.InverseTransposeWorld = World.Inverse().GetTransposed();
+	return Constants;
+}
 
 struct FSortEntry
 {
