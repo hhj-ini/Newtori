@@ -31,6 +31,19 @@ UClass* FindClass(const FString& Name)
 	return Found ? *Found : nullptr;
 }
 
+void GetDerivedClasses(const UClass* BaseClass, TArray<UClass*>& OutClasses)
+{
+	if (BaseClass == nullptr) return;
+	if (const TSet<UClass*>* Children = GetClassToChildren().Find(BaseClass))
+	{
+		for (UClass* Child : *Children)
+		{
+			OutClasses.Add(Child);
+			GetDerivedClasses(Child, OutClasses);
+		}
+	}
+}
+
 void GetObjectsOfClass(const UClass* ClassToLookFor, TArray<UObject*>& Results, bool bIsIncludeDerivedClass)
 {
 	if (!ClassToLookFor) return;

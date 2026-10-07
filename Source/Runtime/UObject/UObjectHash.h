@@ -7,6 +7,7 @@ void RegisterClass(UClass* Class);
 
 UClass* FindClass(const FString& Name);
 
+void GetDerivedClasses(const UClass* BaseClass, TArray<UClass*>& OutClasses);
 void GetObjectsOfClass(const UClass* ClassToLookFor, TArray<UObject*>& Results, bool bIsIncludeDerivedClass = true);
 
 void HashObject(UObject* Obj, const UClass* Class); 

@@ -2,6 +2,7 @@
 #include "Math/Vector.h"
 #include <cmath>
 #include <assert.h>
+#include "Math/Quat.h"
 
 FVector::FVector()
 {
@@ -57,6 +58,29 @@ FVector FVector::Normalized() const
 	}
 
 	return *this;
+}
+
+bool FVector::IsZero() const
+{
+	return abs(X) <= 1e-4f && abs(Y) <= 1e-4f && abs(Z) <= 1e-4f;
+}
+
+FQuat FVector::ToOrientationQuat() const
+{
+	const float YawRad = atan2(Y, X);
+	const float PitchRad = atan2(Z, sqrt(X * X + Y * Y));
+
+	const float DivideBy2 = 0.5;
+	float SinPitch{sin(PitchRad* DivideBy2)}, SinYaw{sin(YawRad*DivideBy2)};
+	float CosPitch{cos(PitchRad*DivideBy2)}, CosYaw{cos(YawRad*DivideBy2)};
+
+	FQuat Result;
+	Result.X = SinPitch * SinYaw;
+	Result.Y = -SinPitch * CosYaw;
+	Result.Z = CosPitch * SinYaw;
+	Result.W = CosPitch * CosYaw;
+
+	return Result;
 }
 
 float& FVector::Component(int32 index)

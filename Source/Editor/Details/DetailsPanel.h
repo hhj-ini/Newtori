@@ -16,17 +16,30 @@ public:
 	bool Init() override;
 	void Tick(float DeltaTime)override;
 	void OnRender() override;
+
 	const char* GetPanelName() const override { return "Details"; }
-
-	void SetTarget(USceneComponent* InTargetOrNull) { Target = InTargetOrNull; }
-
-	void SetWorld(UWorld* InWorld) { World = InWorld; }
 
 	ImFont* GetCustomFont() { return CustomFont; }
 
+	void SetWorld(UWorld* InWorld) { World = InWorld; }
+	void SetTarget(USceneComponent* InTargetOrNull) { Target = InTargetOrNull; SelectedComponent = nullptr;}
+
+	UActorComponent* GetSelectedComponent() const { return SelectedComponent; }
+	void ClearSelectedComponent() { SelectedComponent = nullptr; }
+
 private:
+	ImFont* CustomFont = nullptr;
 	UWorld* World = nullptr;
 	USceneComponent* Target = nullptr;
-	ImFont* CustomFont = nullptr;
+
+	USceneComponent* ComponentToExpandNextFrame = nullptr;
+
+	// Tree 순회 중 AttachChildren 변경으로 인한 iterator invalidation을 피하기 위해 DnD reparent를 지연 처리한다.
+	USceneComponent* PendingDraggedComponent = nullptr;
+	USceneComponent* PendingAttachParent = nullptr;
+
+	UActorComponent* SelectedComponent = nullptr;
+	void DrawComponentTree(AActor* Owner);
+	void DrawSceneComponentNode(USceneComponent* Component);
 };
 

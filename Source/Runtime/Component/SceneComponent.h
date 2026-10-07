@@ -10,7 +10,7 @@ class USceneComponent : public UActorComponent
 
 	REFLECT_START(ClassName)
 		PROPERTY(Transform)
-		REFLECT_END()
+	REFLECT_END()
 
 public:
 	USceneComponent() = default;
@@ -28,6 +28,12 @@ public:
 	void SetRelativeRotation(const FRotator& InRotation) 
 	{
 		Transform.Rotation = InRotation; 
+		MarkTransformDirty();
+	}
+
+	void SetRelativeRotationFromQuat(const FQuat& InQuat)
+	{
+		Transform.Rotation = InQuat.ToFRotator();
 		MarkTransformDirty();
 	}
 
@@ -68,10 +74,14 @@ public:
 
 
 protected:
+	// 부모 기준의 상대 Transform
 	bool bTransformDirty;
 	FTransform Transform;
 
-	USceneComponent* AttachParent = nullptr; // Attach 부모 정보
+	// 부모 SceneComponent와의 연결 관계
+	USceneComponent* AttachParent = nullptr;
+
+	// 현재 SceneComponent에 연결된 자식 목록
 	TArray<USceneComponent*> AttachChildren;
 
 };

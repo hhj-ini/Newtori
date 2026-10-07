@@ -39,6 +39,15 @@ struct FRotator
 
 		return *this;
 	}
+
+	FRotator operator*(const float Value)
+	{
+		Pitch *= Value;
+		Yaw *= Value;
+		Roll *= Value;
+
+		return *this;
+	}
 };
 
 FRotator operator+(FRotator Rot, const FVector& Vec);

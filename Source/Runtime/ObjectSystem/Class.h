@@ -47,11 +47,3 @@ public:
 		Properties.Add({ InName, InType, InOffset, sizeof(T) });
 	}
 };
-
-//보류
-inline void CopyProperties(UObject* Src, UObject* Dst, UClass* FromClass)
-{
-	for (UClass* c = FromClass; c; c = c->Super)
-		for (const FProperty& p : c->Properties)
-			memcpy((char*)Dst + p.Offset, (char*)Src + p.Offset, p.Size);
-}

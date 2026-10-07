@@ -152,6 +152,11 @@ FQuat MakeCameraRotation(const float YawDegrees, const float PitchDegrees)
 // 메인 카메라 투영값을 공유하고 네 View의 기본 프리셋 상태를 만든다.
 void FMultipleViewportsAdapter::InitializeFromWorld(UWorld& World)
 {
+    for (size_t i = 0; i < 4; ++i)
+    {
+        Worlds.Add(&World);   // 초기화 시에는 모두 같은 월드 상황 PIE 실행할 때만 월드 변경
+    }
+
     UCameraComponent* MainCamera = World.GetMainCamera() ? World.GetMainCamera()->GetCameraComponent() : nullptr;
     assert(MainCamera != nullptr);
 
@@ -441,21 +446,28 @@ void FMultipleViewportsAdapter::UpdateInput(
 }
 
 // 현재 World의 가시 컴포넌트에서 경계만 캡처한다. Mesh·삼각형은 복사하지 않는다.
-void FMultipleViewportsAdapter::CaptureWorld(UWorld& World)
+void FMultipleViewportsAdapter::CaptureWorld(UWorld* InWorld)
 {
-    RenderObjects.Reset();
-    for (auto& Entry : PrimitiveById) Entry.second.bCaptured = false;
-    bCapturedBillboard = false;
-    bCapturedParticle = false;
+    if (!CaptureWorlds.Contains(InWorld))
+    {
+        CaptureWorlds.Add(InWorld, FCaptureWorld());
+    }
 
-    const FScene& Scene = World.GetScene();
+    auto& CaptureTarget = CaptureWorlds[InWorld];
+
+    CaptureTarget.RenderObjects.Reset();
+    for (auto& Entry : CaptureTarget.PrimitiveById) Entry.second.bCaptured = false;
+    CaptureTarget.bCapturedBillboard = false;
+    CaptureTarget.bCapturedParticle = false;
+
+    const FScene& Scene = InWorld->GetScene();
     const int32 Count = Scene.Proxies.Num();
     for (int32 i = 0; i < Count;++i)
     {
         if (!Scene.PrimitiveFlags[i]) continue;
         UPrimitiveComponent* Primitive = Scene.Proxies[i]->GetComponent();
         if (!Primitive || !Primitive->IsVisible() || !Primitive->GetOwner() ||
-            Primitive->GetOwner()->GetWorld() != &World) continue;
+            Primitive->GetOwner()->GetWorld() != InWorld) continue;
         const ObjectId Id = Primitive->GetUUID();
         if (Id == InvalidObjectId) continue;
 
@@ -464,19 +476,19 @@ void FMultipleViewportsAdapter::CaptureWorld(UWorld& World)
         const FPrimitiveSceneProxy* Proxy = Primitive->GetSceneProxy();
         RenderObject.WorldBounds = Proxy && Proxy->GetMesh()
             ? Proxy->GetBounds() : MakeWorldBounds(Primitive->CalcBounds());
-        RenderObjects.Add(RenderObject);
-        PrimitiveSnapshot& Snapshot = PrimitiveById[Id];
+        CaptureTarget.RenderObjects.Add(RenderObject);
+        PrimitiveSnapshot& Snapshot = CaptureTarget.PrimitiveById[Id];
         Snapshot.Primitive = Primitive;
         Snapshot.bCaptured = true;
         Snapshot.bParticlesPrepared = false;
-        if (Cast<UParticleSubUVComponent>(Primitive)) bCapturedParticle = true;
-        else if (Cast<UBillboardComponent>(Primitive)) bCapturedBillboard = true;
+        if (Cast<UParticleSubUVComponent>(Primitive)) CaptureTarget.bCapturedParticle = true;
+        else if (Cast<UBillboardComponent>(Primitive)) CaptureTarget.bCapturedBillboard = true;
     }
 
-    for (auto Iterator = PrimitiveById.begin(); Iterator != PrimitiveById.end();)
+    for (auto Iterator = CaptureTarget.PrimitiveById.begin(); Iterator != CaptureTarget.PrimitiveById.end();)
     {
         const auto Current = Iterator++;
-        if (!Current->second.bCaptured) PrimitiveById.Remove(Current->first);
+        if (!Current->second.bCaptured) CaptureTarget.PrimitiveById.Remove(Current->first);
     }
 }
 
@@ -632,9 +644,12 @@ void FMultipleViewportsAdapter::BuildRenderQueue(const int32 ViewIndex, FRenderQ
     OutQueue.Reset();
     PendingStaticMeshes.Reset();
     LODInputs.Reset();
+
+    UWorld* World = Worlds[ViewIndex];
+
     if (!IsViewActive(ViewIndex)) return;
     {
-        CullForView(RenderObjects, PrepareView(ViewIndex).Frustum, VisibleIds[ViewIndex]);
+        CullForView(CaptureWorlds[World].RenderObjects, PrepareView(ViewIndex).Frustum, VisibleIds[ViewIndex]);
     }
     const FRect& Rect = GetViewRect(ViewIndex);
     const FViewCamera& ViewCamera = Views.Cameras[ViewIndex];
@@ -657,7 +672,7 @@ void FMultipleViewportsAdapter::BuildRenderQueue(const int32 ViewIndex, FRenderQ
 
     for (const ObjectId Id : VisibleIds[ViewIndex])
     {
-        const auto Found = PrimitiveById.Find(Id);
+        const auto Found = CaptureWorlds[World].PrimitiveById.Find(Id);
         if (!Found || !Found->Primitive)
             continue;
 

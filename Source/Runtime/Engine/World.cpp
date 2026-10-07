@@ -26,7 +26,6 @@
 #include "Core/Stats/EditorStats.h"
 #include "Core/Async/TaskPool.h"
 
-
 DECLARE_CYCLE_STAT("Actor Tick", STAT_ActorTick); // Actor 틱 측정
 DECLARE_CYCLE_STAT("Update All Transforms", STAT_UpdateAllTransforms); // 각 Transform의 Update 시간 측정
 DECLARE_CYCLE_STAT("Gather Render Packets", STAT_GatherRenderPackets);
@@ -36,13 +35,11 @@ DECLARE_CYCLE_STAT("Gather - LOD", STAT_GatherLOD);
 DECLARE_CYCLE_STAT("Gather - Submit", STAT_GatherSubmit);
 
 
-
 UWorld::~UWorld()
 {
-
 }
 
-bool  UWorld::Init()
+bool UWorld::Init(EWorldType InType)
 {
 	// Spawn Actor로 카메라 생성하고 세팅하기
 	PersistentLevel = FObjectFactory::ConstructObject<ULevel>();
@@ -60,6 +57,9 @@ bool  UWorld::Init()
 
 	//카메라 생성
 	CreateMainCamera();
+
+	// 월드 타입 설정 (Editor, Game, PIE 등)
+	WorldType = InType;
 
 	return true;
 }
@@ -93,7 +93,7 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	for (UActorComponent* Component : NewActor->GetComponents())
 	{
 		if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
-			Scene.AddPrimitive(Primitive);
+			Primitive->RegisterComponent();
 
 		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 			Scene.AddExponentialHeightFog(Fog);
@@ -116,23 +116,27 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 void UWorld::Tick(float DeltaTime)
 {
-	while (!BeginPlayList.IsEmpty())
+	if (EWorldType::PIE == WorldType)
 	{
-		BeginPlayList.Peek()->BeginPlay();
-		BeginPlayList.Dequeue();
-	}
-
-	{
-		SCOPE_CYCLE_COUNTER(STAT_ActorTick);
-		// 모든 Actor를 도는 대신 등록된 Tick 함수(메인 카메라 포함)만 실행한다.
-		TickTaskManager.RunAllTickGroups(DeltaTime);
-
-		for (ULevel* Level : Levels)
+		while (!BeginPlayList.IsEmpty())
 		{
-			PathTracker.Tick(Level->GetActors(), DeltaTime);
+			BeginPlayList.Peek()->BeginPlay();
+			BeginPlayList.Dequeue();
+		}
+
+		{
+			SCOPE_CYCLE_COUNTER(STAT_ActorTick);
+			// 모든 Actor를 도는 대신 등록된 Tick 함수(메인 카메라 포함)만 실행한다.
+			TickTaskManager.RunAllTickGroups(DeltaTime);
+
+			for (ULevel* Level : Levels)
+			{
+				PathTracker.Tick(Level->GetActors(), DeltaTime);
+			}
 		}
 	}
-
+	
+	// PIE, Editor 상관 없이 무조건 실행되어야 함.
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
 		Scene.UpdateAllTransforms();
@@ -166,13 +170,13 @@ void UWorld::ClearWorld()
 				Actor->RegisterAllActorTickFunctions(false);
 		Level->ClearActors();
 	}
-	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
+
+	if(PersistentLevel)
+		HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 }
 
 void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContext* LODView, const FFrustumPlanes* Frustum, FRenderer* Renderer)
 {
-
-
 	// 멤버로 두어 매 프레임 용량을 재사용한다.
 	RenderStats.Reset();
 	VisibleProxies.Reset();

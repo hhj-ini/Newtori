@@ -46,12 +46,16 @@ public:
 	void PreExit() override;
 
 	// Active View의 입력과 Picking 결과만 Gizmo 및 선택 상태에 반영한다.
-	void UpdateGizmoAndPicking();
+	void UpdateGizmoAndPicking(UWorld* World);
 	// View 하나의 Scene·Grid·Gizmo·텍스트를 해당 ViewProjection으로 렌더한다.
-	void RenderFrame(int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue);
+	void RenderFrame(int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue, UWorld* InWorld);
 	// 네 View 결과와 ImGui를 메인 Swapchain 백버퍼에 합성한다. Present는 FEngineLoop가 한다.
 	void PresentFrame();
 	void DeleteActor(AActor* Actor);
+
+	// PIE
+	void StartPIE();
+	void EndPIE();
 
 private:
 	// 이번 프레임 DeltaTime을 패널에 전달하고 에디터 단축키를 처리한다.
@@ -86,15 +90,21 @@ private:
 	UFont* SystemFont;
 
 	// Todo: Post process
-	struct FPostProcessConstants
+	struct alignas(16) FPostProcessConstants
 	{
 		uint32 DisplayMode = 0;
 		float NearClip = 0.1f;
 		float FarClip = 10000.f;
 		uint32 IsOrthographic = 0;
+
+		uint32 EnableFXAA = 0;
+		float EdgeThreshold = 0.125f;
+		float EdgeThresholdMin = 0.0312f;
+		float SubpixelStrength = 0.75f;
 	};
 
-	//static_assert(sizeof(FPostProcessConstants) == 16);
+	// HLSL의 PostProcessConstants와 같은 크기인지 확인한다.
+	static_assert(sizeof(FPostProcessConstants) == 32);
 	FShaderProgram* PostProcessShader = nullptr;
 	TUniquePtr<FConstantBuffer> PostProcessConstantBuffer;
 	//
@@ -109,6 +119,9 @@ private:
 	FRenderQueue RenderQueue;
 	FOutlinerPanel* OutlinerPanel = nullptr;
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
+
+	bool bIsPlaying = false;
+	uint32 PIEIndex = -1;
 
 	void ResetSceneSelection();
 

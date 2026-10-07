@@ -33,6 +33,8 @@
 #include "Core/EngineLog.h"
 #include "Core/Stats/LightweightStats.h"
 
+#include "ObjectSystem/ObjectDuplication.h"
+
 namespace
 {
 	DECLARE_CYCLE_STAT("Viewport Update", STAT_ViewportUpdate);
@@ -65,8 +67,9 @@ FEngineConfig UEditorEngine::GetConfig() const
 // Device·Window·Swapchain·AssetManager는 FEngineLoop가 먼저 만들어 둔다.
 bool UEditorEngine::Init()
 {
-	if (!Super::Init())
-		return false;
+	FWorldContext* InitContext = CreateNewWorldContext(EWorldType::Editor, "Editor");
+
+	if (!InitContext) return false;
 
 	MainWindow = GetEngineLoop().GetMainWindow();
 	MainWindowSC = GetEngineLoop().GetSwapchain();
@@ -80,6 +83,9 @@ bool UEditorEngine::Init()
 	EditorUI->SetOpenSceneCallback([this]() { OpenScene(); });
 	EditorUI->SetSaveSceneCallback([this]() { SaveCurrentScene(); });
 	EditorUI->SetSaveSceneAsCallback([this]() { SaveSceneAs(); });
+
+	EditorUI->SetStartPIECallback([this]() {StartPIE();});
+	EditorUI->SetEndPIECallback([this]() {EndPIE();});
 
 	OutputLogPanel = EditorUI->AddEditorPanel<FOutputLogPanel>();
 	FLog::AddSink(OutputLogPanel);
@@ -123,6 +129,7 @@ bool UEditorEngine::Init()
 	TextRenderer = MakeUnique<FTextRenderer>();
 	TextRenderer->Init();
 
+	UWorld* World = InitContext->CurrentWorld;
 	// 투영 행렬 생성 
 	MultipleViewportsAdapter.InitializeFromWorld(*World);
 	// 화면 나눔 비율 설정 가져오기
@@ -179,7 +186,7 @@ bool UEditorEngine::Init()
 
 
 	// Todo: Post process
-	PostProcessShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/PostProcessTestShader.hlsl");
+	PostProcessShader = FRenderResourceManager::GetShaderProgram("Resources/Shader/PostProcessShader.hlsl");
 	PostProcessConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FPostProcessConstants));
 
 	return true;
@@ -203,7 +210,31 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 	EditorControlsPanel->FEditorControlsPanel::DeltaTime = DeltaTime;
 
 	if (!ImGui::GetIO().WantTextInput && FInputSystem::IsKeyPressed(EKeyCode::Delete))
-		DeleteActor(OutlinerPanel->GetSelectedActor());
+	{
+		UActorComponent* Component = DetailsPanel->GetSelectedComponent();
+		if (Component)
+		{
+			AActor* Owner = Component->GetOwner();
+
+			bool bWasRoot = false;
+			if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+			{
+				bWasRoot = Owner && Owner->GetRootComponent() == SceneComponent;
+			}
+			DetailsPanel->ClearSelectedComponent();
+			Component->DestroyComponent();
+
+			// Root가 교체됐으므로 에디터가 들고 있는 Target도 새 Root로 갱신한다.
+			if (bWasRoot && Owner)
+			{
+				OutlinerPanel->SelectActor(Owner);
+			}
+		}
+		else
+		{
+			DeleteActor(OutlinerPanel->GetSelectedActor());
+		}
+	}
 }
 
 // 패널의 Layout·Preset 요청과 입력을 Adapter에 반영한다.
@@ -260,20 +291,40 @@ void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 // 월드를 한 번 Tick·Capture한 뒤 에디터와 피킹을 갱신한다.
 void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 {
-	// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
+	for (size_t i = 0; i < WorldList.Num(); ++i)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_WorldTick);
-		World->Tick(DeltaTime);
+		UWorld* World = WorldList[i].get()->CurrentWorld;
+		if (!World)
+		{
+			continue;
+		}
+		// 월드 상태는 프레임마다 정확히 한 번 갱신하고 캡처한다.
+
+		// PIE 모드 에서만 Tick 호출
+		//if (EWorldType::PIE == World->GetWorldType())
+		{
+			SCOPE_CYCLE_COUNTER(STAT_WorldTick);
+			World->Tick(DeltaTime);
+		}
+
+		{
+			SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
+			MultipleViewportsAdapter.CaptureWorld(World);
+		}
+
+		if (!bIsPlaying)
+		{
+			UpdateGizmoAndPicking(World);
+		}
 	}
+
+	// 1번만 실행되어야 하는 부분은 for 문 외부로 수정
 	{
 		SCOPE_CYCLE_COUNTER(STAT_EditorTick);
 		EditorUI->Tick(DeltaTime);
 	}
-	{
-		SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-		MultipleViewportsAdapter.CaptureWorld(*World);
-	}
-	UpdateGizmoAndPicking();
+
+	
 }
 
 // 공유 월드 캡처로 활성 View별 렌더 큐를 만들고 렌더한다.
@@ -297,7 +348,8 @@ void UEditorEngine::RenderMultipleViewports()
 			MultipleViewportsAdapter.GetEngineViewProjection(ViewIndex),
 			MultipleViewportsAdapter.GetEngineCameraLocation(ViewIndex),
 			MultipleViewportsAdapter.GetEngineCameraForward(ViewIndex),
-			RenderQueue);
+			RenderQueue,
+			MultipleViewportsAdapter.GetViewportWorld(ViewIndex));
 	}
 
 	EMultipleViewportsCameraPreset CameraPresets[4]{};
@@ -320,7 +372,7 @@ void UEditorEngine::EndFrame()
 }
 
 // 입력 View의 Ray와 피킹으로 Gizmo·공유 선택을 갱신한다.
-void UEditorEngine::UpdateGizmoAndPicking()
+void UEditorEngine::UpdateGizmoAndPicking(UWorld* World)
 {
 	// Delete는 BeginFrame에서 한 번만 처리하고 여기서는 View 입력만 다룬다.
 	const int32 ViewIndex = MultipleViewportsAdapter.GetActiveViewIndex();
@@ -358,11 +410,13 @@ void UEditorEngine::UpdateGizmoAndPicking()
 }
 
 // View 행렬로 Scene·Grid·Gizmo·텍스트·Outline을 렌더한다.
-void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
+void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue, UWorld* InWorld)
 {
 	const bool bDrawPrimitives = SettingsPanel->GetSettings().bDrawPrimitives;
 	FTexture2D* PostProcessSource = ViewportsPanel->GetSceneColor(ViewIndex);
 	RenderCommand::BeginRenderPass(ViewRenderingInfo);
+
+
 	{
 		if (SettingsPanel->GetSettings().bDrawBatchLine)
 		{
@@ -373,7 +427,7 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 			if (SettingsPanel->GetSettings().bDrawBoundingBox)
 			{
 				LineBatcher->BuildVertexBuffer();
-				World->GetPathTracker().OnRender(LineBatcher.get());
+				InWorld->GetPathTracker().OnRender(LineBatcher.get());
 			}
 
 			// 선택된 액터가 라이트면 원뿔을 같이 쌓는다
@@ -401,22 +455,20 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 			RenderCommand::SetBlendState(EBlendState::Opaque);
 			RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
 
-		RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
-		Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
-		//Light 추가
-		Renderer->UpdatePointLight(World->GetScene());
+			RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			// 반투명은 Grid 뒤에 합성되어야 하므로 불투명만 먼저 그린다.
+			Renderer->RenderQueueSorting(RenderQueue, ViewProjection);
+			Renderer->UpdatePointLight(InWorld->GetScene());
+			Renderer->RenderOpaque(ViewProjection);
 
-		Renderer->RenderOpaque(ViewProjection);
-			
-		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
-		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
-	}
+			// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+			RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
+		}
 		RenderCommand::EndRenderPass(ViewRenderingInfo);
 
 		if (bDrawPrimitives && FogRenderer && !MultipleViewportsAdapter.IsOrthographic(ViewIndex))
 		{
-			const auto& Fogs = World->GetScene().ExponentialFogs;
+			const auto& Fogs = InWorld->GetScene().ExponentialFogs;
 			if (!Fogs.IsEmpty())
 			{
 				const auto& FogInfo = Fogs[0].Info;
@@ -522,11 +574,15 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		// 실제 장면 렌더링에 사용한 투영 정보를 가져온다.
 		const FCameraProjection Projection = MultipleViewportsAdapter.GetRenderProjection(ViewIndex);
 
+		// 구조체의 기본값으로 FXAA 세부 설정도 초기화한다.
 		FPostProcessConstants PostProcessData{};
 		PostProcessData.DisplayMode = static_cast<uint32>(ViewportsPanel->GetDisplayMode(ViewIndex));
 		PostProcessData.NearClip = Projection.NearClip;
 		PostProcessData.FarClip = Projection.FarClip;
 		PostProcessData.IsOrthographic = (Projection.Mode == EProjectionMode::Orthographic) ? 1U : 0U;
+
+		// 체크하면 1(FXAA 적용), 체크를 해제하면 0(원본 장면 표시).
+		PostProcessData.EnableFXAA = SettingsPanel->GetSettings().bEnableFXAA ? 1U : 0U;
 
 		RenderCommand::UpdateBufferData(PostProcessConstantBuffer.get(), &PostProcessData, sizeof(PostProcessData));
 
@@ -546,7 +602,7 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 
 	FRenderingInfo OverlayInfo{};
 	OverlayInfo.ViewportSetting = PostProcessInfo.ViewportSetting;
-	
+
 	FRenderingDesc OverlayColor = PostProcessInfo.ColorRenderTargets[0];
 	OverlayColor.LoadOp = ERenderTargetLoadOp::Load;
 	OverlayInfo.ColorRenderTargets.Add(OverlayColor);
@@ -557,14 +613,14 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 	RenderCommand::BeginRenderPass(OverlayInfo);
 	{
 		// 스텐실 기반이라 선택 대상의 가시성이 꺼져 있어도 외곽선만 그린다.
-		if (Outline->GetTarget())
+		if (Outline->GetTarget() && !bIsPlaying)
 		{
 			OutlineRenderer->OnRender(*Outline, ViewProjection, ViewRenderingInfo.ViewportSetting);
 		}
 
-	if (Gizmo->GetTarget())
-	{
-		RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
+		if (Gizmo->GetTarget() && !bIsPlaying)
+		{
+			RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
 
 			GizmoRenderer->OnRender(
 				*Gizmo,
@@ -577,7 +633,7 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 
 		if (SettingsPanel->GetSettings().bShowUUID)
 		{
-			for (AActor* Actor : World->GetPersistentLevel()->GetActors())
+			for (AActor* Actor : InWorld->GetPersistentLevel()->GetActors())
 			{
 				if (!Actor)
 					continue;
@@ -611,6 +667,7 @@ void UEditorEngine::RenderFrame(const int32 ViewIndex, const FRenderingInfo& Vie
 		}
 	}
 	RenderCommand::EndRenderPass(OverlayInfo);
+	
 }
 
 
@@ -654,6 +711,68 @@ void UEditorEngine::DeleteActor(AActor* Actor)
 	Actor->Destroy();
 }
 
+void UEditorEngine::StartPIE()
+{
+	if (bIsPlaying)
+	{	// 중복 실행 방지
+		return;	
+	}
+
+	bIsPlaying = true;
+	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
+	if (!EditorWorld)
+	{
+		return;
+	}
+
+	UWorld* PIEWorld = FObjectDuplicator::DuplicateWorld(EditorWorld, EWorldType::PIE);
+	if (!PIEWorld)
+	{
+		HTR_LOG(Error, "Failed to duplicate world for PIE");
+		return;
+	}
+	
+	FWorldContext* PIEContext = CreateNewWorldContext(EWorldType::PIE, "PIE", PIEWorld);
+
+	uint32 ViewIndex = (MultipleViewportsAdapter.GetActiveViewIndex() == -1) ? 0 : MultipleViewportsAdapter.GetActiveViewIndex();
+	PIEIndex = ViewIndex;
+	MultipleViewportsAdapter.SetViewportWorld(ViewIndex, PIEWorld);
+}
+
+void UEditorEngine::EndPIE()
+{
+	// PIE Play중이 아니면 아래 실행 X
+	if (!bIsPlaying || PIEIndex == -1)
+	{
+		return;
+	}
+	bIsPlaying = false;
+	FWorldContext* PIEContext = GetWorldContext(EWorldType::PIE);
+	if (!PIEContext)
+	{
+		return;
+	}
+
+	UWorld* PIEWorld = PIEContext->CurrentWorld;
+	if (!PIEWorld)
+	{
+		return;
+	}
+
+	UWorld* EditorWorld = GetWorldContext(EWorldType::Editor)->CurrentWorld;
+	if (!EditorWorld)
+	{
+		return;
+	}
+
+	MultipleViewportsAdapter.SetViewportWorld(PIEIndex, EditorWorld);
+	PIEIndex = -1;
+	PIEWorld->ClearWorld();
+
+	// 소멸
+	DeleteWorldContext(PIEContext);
+}
+
 // 씬 변경으로 무효화된 에디터의 선택 참조를 모두 해제한다.
 void UEditorEngine::ResetSceneSelection()
 {
@@ -666,6 +785,17 @@ void UEditorEngine::ResetSceneSelection()
 // 새 씬 생성이 성공하면 에디터 선택 상태를 초기화한다.
 void UEditorEngine::CreateNewScene()
 {
+	UWorld* World = nullptr;
+	for (UWorld* WorldPtr : MultipleViewportsAdapter.GetViewportWorlds())
+	{
+		if (EWorldType::Editor == WorldPtr->GetWorldType())
+		{
+			World = WorldPtr;
+		}
+	}
+	
+	if (!World) return;
+
 	if (!FEditorFileUtils::NewScene(World))
 		return;
 
@@ -675,6 +805,16 @@ void UEditorEngine::CreateNewScene()
 // 씬 불러오기가 성공하면 에디터 선택 상태를 초기화한다.
 void UEditorEngine::OpenScene()
 {
+	UWorld* World = nullptr;
+	for (UWorld* WorldPtr : MultipleViewportsAdapter.GetViewportWorlds())
+	{
+		if (EWorldType::Editor == WorldPtr->GetWorldType())
+		{
+			World = WorldPtr;
+		}
+	}
+	if (!World) return;
+
 	if (!FEditorFileUtils::LoadScene(World))
 		return;
 
@@ -684,12 +824,32 @@ void UEditorEngine::OpenScene()
 // 공통 파일 유틸리티로 현재 씬을 저장한다.
 void UEditorEngine::SaveCurrentScene()
 {
+	UWorld* World = nullptr;
+	for (UWorld* WorldPtr : MultipleViewportsAdapter.GetViewportWorlds())
+	{
+		if (EWorldType::Editor == WorldPtr->GetWorldType())
+		{
+			World = WorldPtr;
+		}
+	}
+	if (!World) return;
+
 	FEditorFileUtils::SaveScene(World);
 }
 
 // 공통 파일 유틸리티로 새 경로에 씬을 저장한다.
 void UEditorEngine::SaveSceneAs()
 {
+	UWorld* World = nullptr;
+	for (UWorld* WorldPtr : MultipleViewportsAdapter.GetViewportWorlds())
+	{
+		if (EWorldType::Editor == WorldPtr->GetWorldType())
+		{
+			World = WorldPtr;
+		}
+	}
+	if (!World) return;
+
 	FEditorFileUtils::SaveSceneAs(World);
 }
  

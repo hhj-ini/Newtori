@@ -15,14 +15,16 @@ class AActor : public UObject
 {
 	DECLARE_CLASS(AActor, UObject)
 	REFLECT_START(ClassName)
-		REFLECT_END()
+	REFLECT_END()
 public:
 	AActor();
 	virtual ~AActor();
 
 	virtual void BeginPlay(); // xx World->AddPrimitive 책임이동 필요
+
 	// 액터 자신의 로직. 컴포넌트는 각자의 PrimaryComponentTick으로 따로 실행된다.
 	virtual void Tick(float DeltaTime) {}
+
 	// FActorTickFunction이 호출하는 진입점
 	void TickActor(float DeltaTime) { Tick(DeltaTime); }
 
@@ -30,9 +32,12 @@ public:
 	ULevel* GetLevel() const { return Level; }
 
 	const TArray<UActorComponent*>& GetComponents() const { return Components; }
+
 	USceneComponent* GetRootComponent() const { return RootComponent; }
 	void SetRootComponent(USceneComponent* SceneComponent) { RootComponent = SceneComponent; }
 
+	UActorComponent* AddComponentByClass(UClass* Class);
+	void AddOwnedComponent(UActorComponent* Component);
 	void RemoveOwnedComponent(UActorComponent* Component);
 	
 	FVector GetActorLocation() const;

@@ -16,6 +16,31 @@ class UPrimitiveComponent;
 class UStaticMeshComponent;
 class UWorld;
 
+// 이번 프레임의 엔진 객체와 파티클 준비 상태를 보관한다. 포인터는 다음 캡처 전까지 유효해야 한다.
+struct PrimitiveSnapshot
+{
+    UPrimitiveComponent* Primitive = nullptr;
+    bool bCaptured = false;
+    bool bParticlesPrepared = false;
+    TArray<int32> AliveParticleIndices;
+};
+
+// 다중월드를 위한 캡쳐 월드 구조체
+struct FCaptureWorld
+{
+    // Host가 컬링 입력 버퍼를 소유하고 용량을 재사용한다.
+    TArray<FRenderableObject> RenderObjects;
+    bool bCapturedBillboard = false;
+    bool bCapturedParticle = false;
+    TMap<ObjectId, PrimitiveSnapshot> PrimitiveById;
+
+
+    // 최근 World 스냅샷에 Billboard가 포함됐는지 반환한다.
+    bool HasCapturedBillboard() const { return bCapturedBillboard; }
+    // 최근 World 스냅샷에 Particle이 포함됐는지 반환한다.
+    bool HasCapturedParticle() const { return bCapturedParticle; }
+};
+
 // 팀 엔진 데이터와 MultipleViewports Core API 사이의 상태·변환·렌더 연결을 맡는다.
 class FMultipleViewportsAdapter
 {
@@ -51,7 +76,7 @@ public:
     // 우클릭 Capture View에 이동·Euler Yaw/Pitch·줌 입력을 적용한다.
     void UpdateInput(float DeltaTime, FVector2 LocalMousePosition, float MoveSpeed, float MouseSensitivity);
     // Tick 뒤 현재 World의 ID·경계만 캡처하며 피킹은 Component에 위임한다.
-    void CaptureWorld(UWorld& World);
+    void CaptureWorld(UWorld* InWorld);
 
     // 레이아웃과 Rect 상태를 기준으로 지정 View의 활성 여부를 반환한다.
     bool IsViewActive(int32 ViewIndex) const;
@@ -86,10 +111,9 @@ public:
     bool TryGetActiveViewRay(FVector2 LocalMousePosition, FRay& OutRay) const;
     // 지정 View의 절두체를 통과한 오브젝트 수를 반환한다.
     std::size_t GetVisibleObjectCount(int32 ViewIndex) const;
-    // 최근 World 스냅샷에 Billboard가 포함됐는지 반환한다.
-    bool HasCapturedBillboard() const { return bCapturedBillboard; }
-    // 최근 World 스냅샷에 Particle이 포함됐는지 반환한다.
-    bool HasCapturedParticle() const { return bCapturedParticle; }
+
+
+    FCaptureWorld GetCaptureWorld(UWorld* QueryWorld) { return CaptureWorlds[QueryWorld]; }
 
     // View별 가시 ID를 엔진 컴포넌트로 역매핑해 렌더 큐를 구성한다.
     void BuildRenderQueue(int32 ViewIndex, FRenderQueue& OutQueue);
@@ -106,6 +130,11 @@ public:
 
     // Todo: Post process
     FCameraProjection GetRenderProjection(int32 ViewIndex) const;
+
+    // PIE 월드 설정
+    void SetViewportWorld(UINT Index, UWorld* InWorld) { Worlds[Index] = InWorld; }
+    UWorld* GetViewportWorld(UINT Index) { return Worlds[Index]; }
+    TArray<UWorld*>& GetViewportWorlds() { return Worlds; }
 
 private:
     // 직교 View의 논리 위치는 유지하고 렌더·컬링·피킹용 깊이 범위만 확장한다.
@@ -132,17 +161,8 @@ private:
     bool ViewWireframe[4]{};
     FPickHit LastPick{};
 
-    // 이번 프레임의 엔진 객체와 파티클 준비 상태를 보관한다. 포인터는 다음 캡처 전까지 유효해야 한다.
-    struct PrimitiveSnapshot
-    {
-        UPrimitiveComponent* Primitive = nullptr;
-        bool bCaptured = false;
-        bool bParticlesPrepared = false;
-        TArray<int32> AliveParticleIndices;
-    };
-    TMap<ObjectId, PrimitiveSnapshot> PrimitiveById;
-    // Host가 컬링 입력 버퍼를 소유하고 용량을 재사용한다.
-    TArray<FRenderableObject> RenderObjects;
+    TMap<UWorld*, FCaptureWorld> CaptureWorlds;
+   
     // 불투명 파티클은 최종 렌더러가 거리 정렬하지 않아 기존 Core 정렬을 유지한다.
     TArray<FParticleSortInput> SortInputs;
     TArray<ObjectId> SortedParticleIds;
@@ -150,6 +170,7 @@ private:
     TArray<UStaticMeshComponent*> PendingStaticMeshes;
     TArray<FLODSelectionInput> LODInputs;
     TArray<uint8> SelectedLODs;
-    bool bCapturedBillboard = false;
-    bool bCapturedParticle = false;
+
+    // 각 뷰포트의 월드 -> perspective 에서만 PIE 모드 실행될 수 있도록
+    TArray<UWorld*> Worlds{};
 };

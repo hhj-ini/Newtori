@@ -7,17 +7,65 @@
 USceneComponent::~USceneComponent()
 {
 	TArray<USceneComponent*> Children = AttachChildren;
-	AttachChildren.Reset();
+
+	TArray<FMatrix> ChildWorldMatrices;
 	for (USceneComponent* Child : Children)
 	{
-		Child->AttachParent = nullptr;          
-		Child->SetupAttachment(AttachParent);   
+		ChildWorldMatrices.Add(Child->GetWorldMatrix());
+	}
+	AttachChildren.Reset();
+
+	AActor* OwnerActor = GetOwner();
+	const bool bIsRoot = OwnerActor && OwnerActor->GetRootComponent() == this;
+
+	USceneComponent* NewRoot = nullptr;
+
+	if (bIsRoot && !Children.IsEmpty())
+	{
+		NewRoot = Children[0];
 	}
 
-	if (AActor* OwnerActor = GetOwner())
+	if (bIsRoot && NewRoot)
 	{
-		if (OwnerActor->GetRootComponent() == this)
-			OwnerActor->SetRootComponent(Children.Num() > 0 ? Children[0] : nullptr);
+		// 첫 번째 자식을 새 Root로 승격한다.
+		NewRoot->AttachParent = nullptr;
+		NewRoot->SetTransform(FTransform::FromMatrix(ChildWorldMatrices[0]));
+
+		OwnerActor->SetRootComponent(NewRoot);
+
+		// 나머지 자식들은 새 Root 아래로 옮기되 World Transform은 유지한다.
+		for (uint32 i = 1; i < Children.Num(); ++i)
+		{
+			USceneComponent* Child = Children[i];
+
+			FMatrix NewRootWorld = NewRoot->GetWorldMatrix();
+			FMatrix NewLocalMatrix = ChildWorldMatrices[i] * NewRootWorld.Inverse();
+
+			Child->AttachParent = nullptr;
+			Child->SetupAttachment(NewRoot);
+			Child->SetTransform(FTransform::FromMatrix(NewLocalMatrix));
+		}
+	}
+	else
+	{
+		USceneComponent* NewParent = AttachParent;
+
+		for (uint32 i = 0; i < Children.Num(); ++i)
+		{
+			USceneComponent* Child = Children[i];
+
+			FMatrix NewLocalMatrix = ChildWorldMatrices[i];
+
+			if (NewParent)
+			{
+				FMatrix NewParentWorld = NewParent->GetWorldMatrix();
+				NewLocalMatrix = ChildWorldMatrices[i] * NewParentWorld.Inverse();
+			}
+
+			Child->AttachParent = nullptr;
+			Child->SetupAttachment(NewParent);
+			Child->SetTransform(FTransform::FromMatrix(NewLocalMatrix));
+		}
 	}
 
 	DetachFromParent();
@@ -37,6 +85,7 @@ void USceneComponent::SetupAttachment(USceneComponent* InParent)
 	{
 		AttachParent->AttachChildren.Add(this);
 	}
+	MarkTransformDirty();
 }
 
 void USceneComponent::DetachFromParent()
@@ -53,6 +102,7 @@ void USceneComponent::DetachFromParent()
 		}
 	}
 	AttachParent = nullptr;
+	MarkTransformDirty();
 }
 
 FRotator USceneComponent::GetWorldRotation() const

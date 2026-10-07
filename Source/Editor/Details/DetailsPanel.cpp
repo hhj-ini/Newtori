@@ -105,6 +105,14 @@ namespace
 	bool DrawRotatorAsXYZ(const FString& _label, FRotator& _rotator)
 	{
 		float Euler[3] = { _rotator.Roll, _rotator.Pitch, _rotator.Yaw };
+
+		// UI에서 -0.00으로 표시되는 미세한 회전값은 0으로 표시한다.
+		for (float& Angle : Euler)
+		{
+			if (std::abs(Angle) < 0.005f)
+				Angle = 0.0f;
+		}
+
 		const bool isChanged = DrawVector3Controller(_label, Euler, 0.0f, 55.0f);
 		if (isChanged)
 		{
@@ -113,6 +121,16 @@ namespace
 			_rotator.Yaw = Euler[2];
 		}
 		return isChanged;
+	}
+
+	FString GetAssetDisplayName(const FString& Path)
+	{
+		fs::path AssetPath(Path);
+		if (AssetPath.stem() == "Atlas")
+		{
+			return AssetPath.parent_path().filename().string();
+		}
+		return AssetPath.stem().string();
 	}
 
 	void DrawTextureSlot(UMaterial** MaterialPtr, int32 SlotIndex)
@@ -192,17 +210,6 @@ namespace
 
 		ImGui::PopID();
 	}
-
-	FString GetAssetDisplayName(const FString& Path)
-	{
-		fs::path AssetPath(Path);
-		if (AssetPath.stem() == "Atlas")
-		{
-			return AssetPath.parent_path().filename().string();
-		}
-		return AssetPath.stem().string();
-	}
-
 	void DrawFontSlot(UObject* Owner, UFont** FontPtr)
 	{
 		UFont* Current = *FontPtr;
@@ -249,7 +256,6 @@ namespace
 			ImGui::EndCombo();
 		}
 	}
-
 	void DrawMeshSlot(UObject* Owner, UStaticMesh** StaticMeshPtr)
 	{
 		UStaticMesh* Current = *StaticMeshPtr;
@@ -670,6 +676,9 @@ namespace
 			ClassChain.Add(Class);
 		}
 
+		const float GroupGap = ImGui::GetStyle().ItemSpacing.y;
+		bool bFirstGroup = true;
+
 		// 기반 클래스부터 표시
 		for (auto It = ClassChain.rbegin(); It != ClassChain.rend(); ++It)
 		{
@@ -679,17 +688,26 @@ namespace
 				continue;
 			}
 
-			ImGui::PushID(Class->Name.c_str());
-			if (ImGui::CollapsingHeader(Class->Name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+			// 상속 단계별 Property 묶음 사이에만 약간의 여백을 둔다.
+			if (!bFirstGroup)
 			{
-				for (const FProperty& Property : Class->GetProperties())
-				{
-					DrawProperty(Object, Property, CustomFont);
-				}
+				ImGui::Dummy(ImVec2(0.0f, GroupGap));
+			}
+			bFirstGroup = false;
+
+			ImGui::PushID(Class->Name.c_str());
+			for (const FProperty& Property : Class->GetProperties())
+			{
+				DrawProperty(Object, Property, CustomFont);
 			}
 			ImGui::PopID();
 		}
 	}
+}
+
+FDetailsPanel::~FDetailsPanel()
+{
+	//delete transform;
 }
 
 bool FDetailsPanel::Init()
@@ -712,44 +730,224 @@ void FDetailsPanel::Tick(float DeltaTime)
 {
 }
 
-
 void FDetailsPanel::OnRender()
 {
+	const float ContentGap = ImGui::GetStyle().ItemSpacing.y;
+	const float SectionGap = ContentGap * 2.0f;
+
 	ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
 
 	ImGui::Begin("Details");
 
 	if (Target)
 	{
-		// 액터 -> 컴포넌트 순으로, 클래스별 프로퍼티 표시
+		// 현재 선택된 액터의 프로퍼티를 표시한다.
 		DrawProperties(Target->GetOwner(), CustomFont);
 
-		// 선택된 컴포넌트뿐 아니라 같은 액터의 다른 컴포넌트도 보여준다.
-		// (예: 라이트는 빌보드를 클릭해서 고르지만 수치는 SpotLight 쪽에 있다)
+		// Component 목록 헤더와 Add Component 버튼
+		ImGui::TextUnformatted("Components");
+		ImGui::SameLine();
+
+		const float ButtonWidth = 70.0f;
+		ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - ButtonWidth);
+		if (ImGui::Button("+ Add", ImVec2(ButtonWidth, 0)))
+		{
+			ImGui::OpenPopup("AddComponentPopup");
+		}
+
+		ImGui::Separator();
+
+		// 생성 가능한 UActorComponent 파생 클래스를 팝업에 나열한다.
+		ImGui::SetNextWindowSizeConstraints(ImVec2(220.0f, 0.0f),ImVec2(320.0f, 400.0f));
+		if (ImGui::BeginPopup("AddComponentPopup"))
+		{
+			TArray<UClass*> ComponentClasses;
+			GetDerivedClasses(UActorComponent::StaticClass(), ComponentClasses);
+
+			for (UClass* Class : ComponentClasses)
+			{
+				// 추상 클래스처럼 생성자를 제공하지 않는 타입은 제외한다.
+				if (Class->Constructor == nullptr) continue;
+
+				if (ImGui::Selectable(Class->Name.c_str()))
+				{
+					USceneComponent* AttachParent = Cast<USceneComponent>(SelectedComponent);
+
+					if (AActor* Owner = Target->GetOwner())
+					{
+						UActorComponent* NewComponent = Owner->AddComponentByClass(Class);
+
+						if (NewComponent)
+						{
+							if (USceneComponent* NewSceneComponent = Cast<USceneComponent>(NewComponent)) 
+							{
+								// SceneComponent를 선택한 상태에서 추가했으면 그 밑으로 이동
+								if (AttachParent)
+								{
+									NewSceneComponent->SetupAttachment(AttachParent);
+								}
+
+								// 실제 최종 부모를 펼침
+								ComponentToExpandNextFrame = NewSceneComponent->GetAttachParent();
+							}
+							SelectedComponent = NewComponent;
+						}
+						ImGui::CloseCurrentPopup();
+					}
+				}
+			}
+			ImGui::EndPopup();
+		}
+
+		ImGui::Dummy(ImVec2(0.0f, ContentGap));
+
 		if (AActor* Owner = Target->GetOwner())
 		{
-			for (UActorComponent* Component : Owner->GetComponents())
+			// SceneComponent의 Attachment 관계를 기준으로 Component Tree를 표시한다.
+			// SceneComponent가 아닌 Component는 최상위 항목으로 표시한다.
+			if (ImGui::BeginChild("ComponentTree", ImVec2(0.0f, 120.0f), ImGuiChildFlags_Borders))
 			{
-				// 같은 클래스를 상속한 컴포넌트가 여럿이면 헤더 ID가 겹치므로 분리한다
-				ImGui::PushID(Component);
-				DrawProperties(Component, CustomFont);
-				if (UMeshComponent* MeshComponent = Cast<UMeshComponent>(Component))
+				DrawComponentTree(Owner);
+			}
+			ImGui::EndChild();
+
+			ImGui::Dummy(ImVec2(0.0f, SectionGap));
+			ImGui::SeparatorText("Properties");
+			ImGui::Dummy(ImVec2(0.0f, ContentGap));
+
+			// Component Tree에서 선택된 Component의 프로퍼티를 표시한다.
+			if (SelectedComponent)
+			{
+				DrawProperties(SelectedComponent, CustomFont);
+
+				// MeshComponent는 Reflection 프로퍼티 외에 Material Slot UI도 추가로 표시한다.
+				if (UMeshComponent* MeshComponent = Cast<UMeshComponent>(SelectedComponent))
 				{
 					DrawMaterialSlots(MeshComponent);
 				}
-				ImGui::PopID();
+			}
+			ImGui::Dummy(ImVec2(0.0f, SectionGap));
+		}
+	}
+	ImGui::End();
+}
+
+void FDetailsPanel::DrawComponentTree(AActor* Owner)
+{
+	if (!Owner) return;
+
+	USceneComponent* Root = Owner->GetRootComponent();
+	if (Root)
+	{
+		DrawSceneComponentNode(Root);
+	}
+
+	for (UActorComponent* Component : Owner->GetComponents())
+	{
+		if (USceneComponent* SceneComponent = Cast<USceneComponent>(Component))
+		{
+			// Root 재귀에서 못 잡는 독립 SceneComponent
+			if (SceneComponent != Root && SceneComponent->GetAttachParent() == nullptr)
+			{
+				DrawSceneComponentNode(SceneComponent);
 			}
 		}
 		else
 		{
-			DrawProperties(Target, CustomFont);
+			// SceneComponent가 아닌 일반 ActorComponent
+			ImGui::PushID(Component);
+
+			ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
+			if (Component == SelectedComponent)	Flags |= ImGuiTreeNodeFlags_Selected;
+
+			FString ComponentName = Component->GetFName().ToString();
+			bool bOpen = ImGui::TreeNodeEx(ComponentName.c_str(), Flags);
+			if (ImGui::IsItemClicked()) SelectedComponent = Component;
+
+			ImGui::PopID();
 		}
 	}
 
-	ImGui::End();
+	if (PendingDraggedComponent && PendingAttachParent)
+	{
+		USceneComponent* DraggedComponent = PendingDraggedComponent;
+		USceneComponent* NewParent = PendingAttachParent;
+
+		// 다음 프레임까지 요청이 남지 않도록 먼저 비운다.
+		PendingDraggedComponent = nullptr;
+		PendingAttachParent = nullptr;
+
+		// Reparent 후에도 World Transform을 유지한다.
+		FMatrix OldWorld = DraggedComponent->GetWorldMatrix();
+		FMatrix NewParentWorld = NewParent->GetWorldMatrix();
+		FMatrix NewLocalMatrix = OldWorld * NewParentWorld.Inverse();
+
+		DraggedComponent->SetupAttachment(NewParent);
+
+		// Self/Cycle 등으로 Attachment가 거부되지 않은 경우에만 Local을 갱신한다.
+		if (DraggedComponent->GetAttachParent() == NewParent)
+		{
+			DraggedComponent->SetTransform(FTransform::FromMatrix(NewLocalMatrix));
+		}
+	}
 }
 
-FDetailsPanel::~FDetailsPanel()
+void FDetailsPanel::DrawSceneComponentNode(USceneComponent* Component)
 {
-	//delete transform;
+	ImGui::PushID(Component);
+
+	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen;
+	if (Component == SelectedComponent)	Flags |= ImGuiTreeNodeFlags_Selected;
+
+	const bool bHasChildren = !Component->GetAttachChildren().IsEmpty();
+	if (!bHasChildren) Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+	if (ComponentToExpandNextFrame == Component)
+	{
+		ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+		ComponentToExpandNextFrame = nullptr;
+	}
+
+	FString ComponentName = Component->GetFName().ToString();
+	bool bOpen = ImGui::TreeNodeEx(ComponentName.c_str(), Flags);
+	if (ImGui::IsItemClicked()) SelectedComponent = Component;
+	
+	if (ImGui::BeginDragDropSource())
+	{
+		USceneComponent* DraggedComponent = Component;
+		ImGui::SetDragDropPayload(EditorDragDrop::SceneComponent, &DraggedComponent, sizeof(USceneComponent*));
+
+		ImGui::Text("%s", Component->GetName().c_str());
+
+		ImGui::EndDragDropSource();
+	}
+
+	if (ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::SceneComponent))
+		{
+			USceneComponent* DraggedComponent = *static_cast<USceneComponent**>(Payload->Data);
+
+			// Tree 순회 중 hierarchy를 수정하지 않고,
+			// 순회가 끝난 뒤 처리하도록 요청만 저장한다.
+			PendingDraggedComponent = DraggedComponent;
+			PendingAttachParent = Component;
+
+			// 드롭된 자식이 바로 보이도록 새 부모를 다음 프레임에 펼친다.
+			ComponentToExpandNextFrame = Component;
+		}
+
+		ImGui::EndDragDropTarget();
+	}
+
+	if (bOpen && bHasChildren)
+	{
+		for (USceneComponent* ChildComponent : Component->GetAttachChildren())
+		{
+			DrawSceneComponentNode(ChildComponent);
+		}
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
 }
+

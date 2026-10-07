@@ -110,8 +110,11 @@ bool UBenchmarkEngine::Init()
 	FString ScenePath = "Scenes/Default.scene";
 	if (__argc > 1 && __argv[1] && __argv[1][0] != '\0')
 		ScenePath = __argv[1];
+
+	FWorldContext* WorldContext = GetWorldContext(EWorldType::Game);
+
 	// 카메라 위치·회전·FOV·클립은 씬 파일의 PerspectiveCamera에서 읽는다.
-	if (!FJsonArchive::LoadWorld(World, ScenePath))
+	if (!FJsonArchive::LoadWorld(WorldContext->CurrentWorld, ScenePath))
 		HTR_LOG(Warning, "Failed to load scene: {}", ScenePath);
 
 	InitEditorTools();
@@ -127,6 +130,17 @@ void UBenchmarkEngine::InitEditorTools()
 	GridRenderer = MakeUnique<FGridRenderer>();
 	GridRenderer->Init(Renderer);
 
+	FWorldContext* Context = GetWorldContext(EWorldType::Game);
+	if (!Context)
+	{
+		return;
+	}
+
+	UWorld* World = Context->CurrentWorld;
+	if (!World)
+	{
+		return;
+	}
 	LineBatcher = MakeUnique<FLineBatcher>();
 	LineBatcher->Init(Renderer, World);
 
@@ -143,12 +157,12 @@ void UBenchmarkEngine::InitEditorTools()
 
 	// File 메뉴로 씬을 바꾼다. 기존 액터가 지워지므로 선택(기즈모·아웃라인·디테일)을 먼저 비운다.
 	// 아웃라이너 선택을 비우면 콜백으로 기즈모·아웃라인·디테일 선택도 함께 비워진다.
-	EditorUI->SetOpenSceneCallback([this]()
+	EditorUI->SetOpenSceneCallback([this, World]()
 		{
 			OutlinerPanel->SelectActor(nullptr);
 			FEditorFileUtils::LoadScene(World);
 		});
-	EditorUI->SetNewSceneCallback([this]()
+	EditorUI->SetNewSceneCallback([this, World]()
 		{
 			OutlinerPanel->SelectActor(nullptr);
 			FEditorFileUtils::NewScene(World);
@@ -172,7 +186,7 @@ void UBenchmarkEngine::InitEditorTools()
 			Outline->SetTarget(Cast<UPrimitiveComponent>(Root));
 			DetailsPanel->SetTarget(Root); });
 	OutlinerPanel->SetDeleteActorCallback(
-		[this](AActor* Actor)
+		[this, World](AActor* Actor)
 		{
 			// 선택된 물체를 지우면 선택 표시(UUID·박스)가 해제된 포인터를 읽지 않도록 먼저 비운다.
 			if (UPrimitiveComponent* Selected = GetSelectedPrimitive(); Selected && Selected->GetOwner() == Actor)
@@ -237,6 +251,17 @@ void UBenchmarkEngine::UpdateGizmoAndPicking()
 	if (Width == 0 || Height == 0)
 		return;
 
+	FWorldContext* Context = GetWorldContext(EWorldType::Game);
+	if (!Context)
+	{
+		return;
+	}
+
+	UWorld* World = Context->CurrentWorld;
+	if (!World)
+	{
+		return;
+	}
 	UCameraComponent* Camera = World->GetMainCamera()->GetCameraComponent();
 
 	const FVector2 MousePosition(
@@ -274,6 +299,18 @@ void UBenchmarkEngine::Tick(float DeltaTime)
 	const uint32 Height = GetEngineLoop().GetViewportHeight();
 	if (Width == 0 || Height == 0)
 		return;
+
+	FWorldContext* Context = GetWorldContext(EWorldType::Game);
+	if (!Context)
+	{
+		return;
+	}
+
+	UWorld* World = Context->CurrentWorld;
+	if (!World)
+	{
+		return;
+	}
 
 	UCameraComponent* Camera = World->GetMainCamera()->GetCameraComponent();
 	Camera->SetAspectRatio(static_cast<float>(Width) / Height);
@@ -392,6 +429,18 @@ void UBenchmarkEngine::PreExit()
 void UBenchmarkEngine::DrawProfileOverlay()
 {
 	const FFrameStats& Stats = GetEngineLoop().GetFrameStats();
+
+	FWorldContext* Context = GetWorldContext(EWorldType::Game);
+	if (!Context)
+	{
+		return;
+	}
+
+	UWorld* World = Context->CurrentWorld;
+	if (!World)
+	{
+		return;
+	}
 
 	constexpr ImGuiWindowFlags Flags =
 		ImGuiWindowFlags_NoDecoration |
