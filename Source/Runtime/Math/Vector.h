@@ -45,6 +45,8 @@ public:
 	static const FVector ZeroVector;    // (0, 0, 0)
 	static const FVector OneVector;     // (1, 1, 1)
 
+	bool IsZero() const;
+
 	// float GetMax();
 	//// float GetMin();
 	// float GetAbsMax();

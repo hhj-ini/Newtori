@@ -59,6 +59,11 @@ FVector FVector::Normalized() const
 	return *this;
 }
 
+bool FVector::IsZero() const
+{
+	return abs(X) <= 1e-4f && abs(Y) <= 1e-4f && abs(Z) <= 1e-4f;
+}
+
 float& FVector::Component(int32 index)
 {
 	assert(index >= 0 && index <= 2);
