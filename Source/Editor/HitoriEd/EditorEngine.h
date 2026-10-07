@@ -26,10 +26,14 @@
 #include "Editor/Outliner/OutlinerPanel.h"
 
 #include "Render/SkyboxRenderer.h"
+#include "Render/FogRenderer.h"
 
 //Temp
 #include "Text/Font.h"
 #include "Text/TextRenderer.h"
+
+// Todo: Post process
+#include "Render/Buffer.h"
 
 class UEditorEngine : public UEngine
 {
@@ -81,8 +85,23 @@ private:
 	TUniquePtr<FOutline> Outline;
 	TUniquePtr<FOutlineRenderer> OutlineRenderer;
 	TUniquePtr<FSkyboxRenderer> SkyboxRenderer;
+	TUniquePtr<FFogRenderer> FogRenderer;
 
 	UFont* SystemFont;
+
+	// Todo: Post process
+	struct FPostProcessConstants
+	{
+		uint32 DisplayMode = 0;
+		float NearClip = 0.1f;
+		float FarClip = 10000.f;
+		uint32 IsOrthographic = 0;
+	};
+
+	//static_assert(sizeof(FPostProcessConstants) == 16);
+	FShaderProgram* PostProcessShader = nullptr;
+	TUniquePtr<FConstantBuffer> PostProcessConstantBuffer;
+	//
 
 	FOutputLogPanel* OutputLogPanel = nullptr;
 

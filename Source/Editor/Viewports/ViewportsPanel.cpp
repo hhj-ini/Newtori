@@ -132,6 +132,16 @@ bool FViewportsPanel::ConsumeCameraPresetRequest(int32& OutViewIndex, EMultipleV
 	return true;
 }
 
+const FRenderingInfo& FViewportsPanel::GetFogRenderingInfo(int32 ViewIndex) const
+{
+	return Slots[ViewIndex].FogRenderingInfo;
+}
+
+FTexture2D* FViewportsPanel::GetFogColor(int32 ViewIndex) const
+{
+	return Slots[ViewIndex].FogColor.get();
+}
+
 // View Texture와 Splitter·Layout·Preset UI를 그리고 요청을 기록한다.
 void FViewportsPanel::OnRender()
 {
@@ -154,16 +164,22 @@ void FViewportsPanel::OnRender()
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 	DrawList->PushClipRect(ContentOrigin,
 		{ContentOrigin.x + ContentSize.x, ContentOrigin.y + ContentSize.y}, true);
+
 	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
 	{
 		const FViewSlot& Slot = Slots[ViewIndex];
+		
 		if (!Slot.bActive || !Slot.ColorTarget)
+		{
 			continue;
+		}
 
 		const ImVec2 ViewMin{ContentOrigin.x + Slot.Rect.X, ContentOrigin.y + Slot.Rect.Y};
 		const ImVec2 ViewMax{ViewMin.x + Slot.Rect.Width, ViewMin.y + Slot.Rect.Height};
+
 		DrawList->AddImage(Slot.ColorTarget->GetSRV(), ViewMin, ViewMax);
 	}
+
 	DrawList->PopClipRect();
 
 	if (Slots[1].bActive || Slots[2].bActive || Slots[3].bActive)
@@ -236,6 +252,7 @@ void FViewportsPanel::OnRender()
 			PendingCameraPreset = static_cast<EMultipleViewportsCameraPreset>(SelectedPreset);
 		}
 		ImGui::SameLine();
+
 		// 레이아웃과 독립적으로 각 View의 장면 Fill Mode를 편집한다.
         if (ViewportAdapter)
         {
@@ -246,6 +263,26 @@ void FViewportsPanel::OnRender()
                 ViewportAdapter->SetViewWireframe(ViewIndex, Mode == 1);
             ImGui::SameLine();
         }
+
+		int DisplayMode = static_cast<int>(Slots[ViewIndex].DisplayMode);
+		const char* DisplayModeLabels[] =
+		{
+			"Scene Color",
+			"Scene Depth"
+		};
+
+		ImGui::SetNextItemWidth(120.0f);
+		if (ImGui::Combo(
+			"##DisplayMode",
+			&DisplayMode,
+			DisplayModeLabels,
+			IM_ARRAYSIZE(DisplayModeLabels)))
+		{
+			Slots[ViewIndex].DisplayMode =
+				static_cast<EViewportDisplayMode>(DisplayMode);
+		}
+		ImGui::SameLine();
+
         if (CurrentLayoutMode == ELayoutMode::QuadSplit)
 		{
 			if (ImGui::SmallButton("Single"))
@@ -261,6 +298,7 @@ void FViewportsPanel::OnRender()
 			RequestedSingleViewIndex = ViewIndex;
 			bHasLayoutRequest = true;
 		}
+
 		if (ViewportAdapter && ViewIndex == ViewportAdapter->GetEditorViewIndex() &&
 			FStatOverlay::IsAnyEnabled() &&
 			(FStatOverlay::IsEnabled(EStatFlags::Profile) ||
@@ -442,18 +480,63 @@ void FViewportsPanel::ResizeSlot(FViewSlot& Slot, const uint32 Width, const uint
 	Desc.Usage = D3D11_USAGE_DEFAULT;
 	Desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 	Slot.ColorTarget = RenderCommand::CreateTexture2D(Desc);
+	Slot.SceneColor = RenderCommand::CreateTexture2D(Desc);
+	Slot.FogColor = RenderCommand::CreateTexture2D(Desc); // RGBA8, RTV + SRV
 
-	Desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	Desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	Desc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	Desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 	Slot.DepthTarget = RenderCommand::CreateTexture2D(Desc);
 
-	Slot.Width = Width;
 	Slot.Height = Height;
 	Slot.RenderingInfo.ColorRenderTargets.Reset();
 	Slot.RenderingInfo.ViewportSetting.Width = Width;
 	Slot.RenderingInfo.ViewportSetting.Height = Height;
+	
 	FRenderingDesc ColorDesc{};
-	ColorDesc.Texture = Slot.ColorTarget.get();
+	// Todo: Post process
+	//ColorDesc.Texture = Slot.ColorTarget.get();
+	ColorDesc.Texture = Slot.SceneColor.get();
+
 	Slot.RenderingInfo.ColorRenderTargets.Add(ColorDesc);
 	Slot.RenderingInfo.DepthStencil.Texture = Slot.DepthTarget.get();
+
+	Slot.FogRenderingInfo.ColorRenderTargets.Reset();
+	Slot.FogRenderingInfo.ViewportSetting = Slot.RenderingInfo.ViewportSetting;
+
+	FRenderingDesc FogColorDesc{};
+	FogColorDesc.Texture = Slot.FogColor.get();
+	FogColorDesc.LoadOp = ERenderTargetLoadOp::Clear;
+	Slot.FogRenderingInfo.ColorRenderTargets.Add(FogColorDesc);
+	Slot.FogRenderingInfo.DepthStencil.Texture = nullptr;
+
+	Slot.PostProcessRenderingInfo.ColorRenderTargets.Reset();
+
+	Slot.PostProcessRenderingInfo.ViewportSetting.Width = Width;
+	Slot.PostProcessRenderingInfo.ViewportSetting.Height = Height;
+
+	FRenderingDesc PostProcessColorDesc{};
+	PostProcessColorDesc.Texture = Slot.ColorTarget.get();
+	Slot.PostProcessRenderingInfo.ColorRenderTargets.Add(PostProcessColorDesc);
+
+	// Todo: Use depth buffer later
+	Slot.PostProcessRenderingInfo.DepthStencil.Texture = nullptr;
+}
+
+
+// Todo: Post process
+const FRenderingInfo& FViewportsPanel::GetPostProcessRenderingInfo(int32 ViewIndex) const
+{
+	return Slots[ViewIndex].PostProcessRenderingInfo;
+}
+
+FTexture2D* FViewportsPanel::GetSceneColor(int32 ViewIndex) const
+{
+	return Slots[ViewIndex].SceneColor.get();
+}
+
+EViewportDisplayMode FViewportsPanel::GetDisplayMode(int32 ViewIndex) const
+{
+	//assert(ViewIndex >= 0 && ViewIndex < 4);
+
+	return Slots[ViewIndex].DisplayMode;
 }
