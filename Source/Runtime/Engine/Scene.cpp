@@ -119,6 +119,7 @@ void FScene::UpdateAllTransforms()
 	}
 
 	UpdateDirtyFogs();
+	UpdateDirtyLights();
 }
 
 void FScene::BuildBVH()
@@ -234,6 +235,92 @@ void FScene::RemoveAllExponentialHeightFogs()
 	ExponentialFogs.Reset();
 	FogComponentMap.Reset();
 	DirtyFogIds.Reset();
+}
+
+// ----------Light----------
+
+void FScene::AddLight(ULightComponent* Light)
+{
+	if (!Light) return;
+
+	const uint32 Id = Light->GetUUID();
+
+	if (LightComponentMap.Contains(Id)) return;
+
+	FLightSceneEntry Entry{ Id, MakeUnique<FLightSceneProxy>(Light) };
+
+	LightComponentMap.Add(Id, Light);
+	Light->SetSceneProxy(Entry.Proxy.get());
+
+	Lights.Add(std::move(Entry));
+}
+
+void FScene::MarkLightDirty(uint32 ComponentId)
+{
+	if (!LightComponentMap.Contains(ComponentId)) return;
+	if (DirtyLightIds.Find(ComponentId) != INDEX_NONE) return;
+
+	DirtyLightIds.Add(ComponentId);
+}
+
+void FScene::UpdateDirtyLights()
+{
+	for (uint32 Id : DirtyLightIds)
+	{
+		ULightComponent** Found = LightComponentMap.FindOrNull(Id);
+		if (!Found || !*Found) continue;
+
+		for (FLightSceneEntry& Entry : Lights)
+		{
+			if (Entry.Id == Id && Entry.Proxy)
+			{
+				Entry.Proxy->UpdateFromComponent(**Found);
+				break;
+			}
+		}
+	}
+
+	DirtyLightIds.Reset();
+}
+
+void FScene::RemoveLight(ULightComponent* Light)
+{
+	if (!Light) return;
+
+	const uint32 Id = Light->GetUUID();
+	ULightComponent** Found = LightComponentMap.FindOrNull(Id);
+
+	if (!Found || *Found != Light) return;
+
+	Light->SetSceneProxy(nullptr);
+	LightComponentMap.Remove(Id);
+
+	const int32 DirtyIndex = DirtyLightIds.Find(Id);
+	if (DirtyIndex != INDEX_NONE)
+		DirtyLightIds.RemoveAt(DirtyIndex, 1);
+
+	for (int32 Index = 0; Index < Lights.Num(); ++Index)
+	{
+		if (Lights[Index].Id == Id)
+		{
+			// 현재 RemoveAtSwap()은 복사 방식이라 사용하지 않는다.
+			Lights.RemoveAt(Index, 1);
+			break;
+		}
+	}
+}
+
+void FScene::RemoveAllLights()
+{
+	for (const auto& Pair : LightComponentMap)
+	{
+		if (Pair.second)
+			Pair.second->SetSceneProxy(nullptr);
+	}
+
+	DirtyLightIds.Reset();
+	LightComponentMap.Reset();
+	Lights.Reset();
 }
 
 

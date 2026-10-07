@@ -97,6 +97,12 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 			Scene.AddExponentialHeightFog(Fog);
+
+		if (ULightComponent* Light = Cast<ULightComponent>(Component))
+		{
+			Scene.AddLight(Light);
+		}
+
 	}
 
 	// 4. Level->Actors에 등록
@@ -151,6 +157,7 @@ void UWorld::ClearWorld()
 	// 그대로 두면 지워진 컴포넌트를 가리키는 프록시가 FScene에 남아 다음 프레임에 터진다.
 	Scene.RemoveAllPrimitives();
 	Scene.RemoveAllExponentialHeightFogs();
+	Scene.RemoveAllLights();
 
 	for (ULevel* Level : Levels)
 	{
@@ -310,8 +317,9 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					if (SlotDest)
 					{
 						// 칸 VisibleIndex는 이 반복만 쓴다 → 스레드끼리 겹치지 않음
+						const FPerObjectConstants Constants = MakePerObjectConstants(Proxy->GetLocalToWorld());
 						std::memcpy(SlotDest + size_t(VisibleIndex) * ObjectSlotBytes,
-							&Proxy->GetLocalToWorld(), sizeof(FMatrix));
+							&Constants, sizeof(Constants));
 						Slot = VisibleIndex;
 					}
 
@@ -393,7 +401,8 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					if (!SlotDest || NextExtraSlot >= MaxSlots) break;
 					FRenderPacket& Packet = RenderQueue[p];
 					const FMatrix& Model = Packet.Proxy ? Packet.Proxy->GetLocalToWorld() : Packet.Model ? *Packet.Model : FMatrix::Identity;
-					std::memcpy(SlotDest + size_t(NextExtraSlot) * ObjectSlotBytes, &Model, sizeof(FMatrix));
+					const FPerObjectConstants Constants = MakePerObjectConstants(Model);
+					std::memcpy(SlotDest + size_t(NextExtraSlot) * ObjectSlotBytes, &Constants, sizeof(Constants));
 					Packet.Slot = NextExtraSlot++;
 				}
 			}
@@ -566,6 +575,10 @@ bool UWorld::DestroyActor(AActor* Actor)
 		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 		{
 			Scene.RemoveExponentialHeightFog(Fog);
+		}
+		if (ULightComponent* Light = Cast<ULightComponent>(Component))
+		{
+			Scene.RemoveLight(Light);
 		}
 	}
 

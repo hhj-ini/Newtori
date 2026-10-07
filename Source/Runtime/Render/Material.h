@@ -20,7 +20,7 @@ struct FStaticMeshMaterialParams
 	FVector4 BaseColor;
 	FVector2 UVOffset;
 	float bOpaque; // 1이면 PS가 알파를 1로 출력한다
-	float Padding;
+	float bUnlit;
 };
 
 class UMaterial : public UMaterialInterface
@@ -43,6 +43,7 @@ public:
 	FVector2 UVScrollSpeed = FVector2(0.0f, 0.0f);
 
 	bool bIsInstance = false;
+	bool bUnlit = false;
 
 	// 인스턴스가 복제된 원본. 인스턴스는 경로가 없어서, 저장할 때 원본을 따라가 기준 에셋을 찾는다
 	const UMaterial* Parent = nullptr;
