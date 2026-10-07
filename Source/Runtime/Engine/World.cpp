@@ -97,6 +97,12 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 			Scene.AddExponentialHeightFog(Fog);
+
+		if (ULightComponent* Light = Cast<ULightComponent>(Component))
+		{
+			Scene.AddLight(Light);
+		}
+
 	}
 
 	// 4. Level->Actors에 등록
@@ -151,6 +157,7 @@ void UWorld::ClearWorld()
 	// 그대로 두면 지워진 컴포넌트를 가리키는 프록시가 FScene에 남아 다음 프레임에 터진다.
 	Scene.RemoveAllPrimitives();
 	Scene.RemoveAllExponentialHeightFogs();
+	Scene.RemoveAllLights();
 
 	for (ULevel* Level : Levels)
 	{
@@ -566,6 +573,10 @@ bool UWorld::DestroyActor(AActor* Actor)
 		if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 		{
 			Scene.RemoveExponentialHeightFog(Fog);
+		}
+		if (ULightComponent* Light = Cast<ULightComponent>(Component))
+		{
+			Scene.RemoveLight(Light);
 		}
 	}
 
