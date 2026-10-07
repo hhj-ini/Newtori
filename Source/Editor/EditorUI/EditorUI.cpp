@@ -1,11 +1,17 @@
 #include "EnginePCH.h"
 #include "Editor/EditorUI/EditorUI.h"
 #include <imgui_internal.h>
+#include "Asset/AssetManager.h"
 
 bool FEditorUI::Init(bool bInUseDockSpace, bool bInPassthruCentralNode)
 {
 	bUseDockSpace = bInUseDockSpace;
 	bPassthruCentralNode = bInPassthruCentralNode;
+
+	PlayIcon = UAssetManager::Get().LoadTexture("Assets/Icons/PlayIcon.png");
+	StopIcon = UAssetManager::Get().LoadTexture("Assets/Icons/StopIcon.png");
+	SaveIcon = UAssetManager::Get().LoadTexture("Assets/Icons/Save.png");
+
 	return true;
 
 	return false;
@@ -175,11 +181,11 @@ void FEditorUI::DrawMainToolBar()
 
 	if (ImGui::Begin("MainToolBar", nullptr, Flags))
 	{
-		// 기본 버튼 사이즈
-		const ImVec2 ButtonSize(32.0f, 32.0f);	
 		// 저장 버튼
 		{
-			if (ImGui::Button("Save"))
+			ImTextureID TexID = (ImTextureID)SaveIcon->GetResource()->GetSRV();
+			ImVec2 SaveSize{ static_cast<float>(SaveIcon->GetWidth()), static_cast<float>(SaveIcon->GetHeight()) };
+			if (ImGui::ImageButton("Save", TexID, SaveSize))
 			{
 				 if (OnSaveScene) OnSaveScene(); 
 			}
@@ -189,33 +195,42 @@ void FEditorUI::DrawMainToolBar()
 		// 구분선
 		ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
 		ImGui::SameLine();
+
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 		// PIE 관련 버튼
 		{
-			if (ImGui::Button("Play"))
+			ImTextureID PlayTexID = (ImTextureID)PlayIcon->GetResource()->GetSRV();
+			ImVec2 PlaySize{ static_cast<float>(PlayIcon->GetWidth()), static_cast<float>(PlayIcon->GetHeight()) };
+			if (ImGui::ImageButton("Play", PlayTexID, PlaySize))
 			{
 				if (OnStartPIE) 
 					OnStartPIE();
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Stop"))
+
+			ImTextureID StopTexID = (ImTextureID)StopIcon->GetResource()->GetSRV();
+			ImVec2 StopSize{ static_cast<float>(StopIcon->GetWidth()), static_cast<float>(StopIcon->GetHeight()) };
+
+			if (ImGui::ImageButton("Stop", StopTexID, StopSize))
 			{
 				if (OnEndPIE) 
-OnEndPIE();
+					OnEndPIE();
 			}
-			ImGui::SameLine();
+
+			// TODO: 새 창에서 PIE 띄우는 로직 구현 필요.
+			/*ImGui::SameLine();
 			if (ImGui::Button("Setting"))
 			{
 				ImGui::OpenPopup("PlaySetting");
-			}
-
-			if (ImGui::BeginPopup("PlaySetting"))
+			}*/
+			/*if (ImGui::BeginPopup("PlaySetting"))
 			{
 				if (ImGui::MenuItem("Selected Viewport")) { ; }
 				if (ImGui::MenuItem("New Editor Window (PIE)")) { ; }
 				ImGui::EndPopup();
-			}
+			}*/
 			
-
+			ImGui::PopStyleVar(1);
 		}
 
 		ImGui::End();
